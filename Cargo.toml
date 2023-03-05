@@ -1,0 +1,20 @@
+[package]
+name = "ttags"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+globwalk = "0.8.1"
+num_cpus = "1.15.0"
+crossbeam-channel = "0.5"
+rusqlite = { version = "0.28.0", features = ["bundled"] }
+tree-sitter = "0.20.9"
+tree-sitter-tags = "0.20.2"
+tree-sitter-c = "0.20.2"
+tree-sitter-cpp = "0.20.0"
+tree-sitter-rust = "0.20.3"
+tree-sitter-python = "0.20.2"
+tree-sitter-javascript = "0.20.0"
+clap = { version = "3.2.22", features = ["derive"] }
