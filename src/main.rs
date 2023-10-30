@@ -6,8 +6,10 @@ use tree_sitter_tags::TagsConfiguration;
 
 use crossbeam_channel::{Receiver, Sender, bounded, unbounded};
 use std::thread;
+use std::rc::Rc;
+use std::cell::RefCell;
 
-const PATTERNS: [&str; 9] = [ "*.rs", "*.cpp", "*.hpp", "*.cc", "*.hh", "*.c", "*.h", "*.py", "*.js" ];
+const PATTERNS: [&str; 10] = [ "*.rs", "*.cpp", "*.hpp", "*.ipp", "*.cc", "*.hh", "*.c", "*.h", "*.py", "*.js" ];
 
 #[derive(Debug)]
 struct Entry {
@@ -19,8 +21,9 @@ struct Entry {
     column: usize,
 }
 
-fn parse(file: &globwalk::DirEntry, conf: &TagsConfiguration) -> Vec<Entry> {
+fn tokenize(file: &globwalk::DirEntry, conf: &TagsConfiguration) -> Vec<Entry> {
     let mut context = TagsContext::new();
+    //println!("file: {}", file.path().display());
     let code = std::fs::read(file.path()).unwrap();
     let tags = context.generate_tags(
         &conf,
@@ -29,7 +32,7 @@ fn parse(file: &globwalk::DirEntry, conf: &TagsConfiguration) -> Vec<Entry> {
     ).unwrap().0;
 
     let mut res: Vec<Entry> = Vec::new();
-
+//println!("start tokenizing");
     for tag in tags {
         let tag: tree_sitter_tags::Tag = tag.unwrap();
         let entry: Entry = Entry {
@@ -40,6 +43,7 @@ fn parse(file: &globwalk::DirEntry, conf: &TagsConfiguration) -> Vec<Entry> {
             row: tag.span.start.row + 1,
             column: tag.span.start.column + 1,
         };
+        //println!("token: {:?}", entry);
         res.push(entry);
     };
 
@@ -47,29 +51,35 @@ fn parse(file: &globwalk::DirEntry, conf: &TagsConfiguration) -> Vec<Entry> {
 }
 
 // tags - all tags retrieved from one file
-fn process(tags: Vec<Entry>, conn: &mut rusqlite::Connection) -> Result<(), rusqlite::Error> {
+fn save_to_db(tags: Vec<Entry>, conn: &mut rusqlite::Connection) -> Result<(), rusqlite::Error> {
     if tags.len() == 0 {
         return Ok(());
     }
+    println!("Storing {} items to database", tags.len());
     let tx = conn.transaction()?;
-    tx.execute("delete from tags where file = (?1)", [&tags.get(0).unwrap().file])?;
+    //tx.execute("delete from tags where file = (?1)", [&tags.get(0).unwrap().file])?;
     for tag in tags {
-        tx.execute("insert into tags (file, name, is_definition, syntax_type_id, row, column) values (?1, ?2, ?3, ?4, ?5, ?6)",
-            [tag.file,
-                tag.name,
-                tag.is_definition.to_string(),
-                tag.syntax_type_id.to_string(),
-                tag.row.to_string(),
-                tag.column.to_string()])?;
+        tx.execute("insert into tags (file, name, is_definition, syntax_type_id, row, column) values (?1, ?2, ?3, ?4, ?5, ?6)", [
+            tag.file,
+            tag.name,
+            tag.is_definition.to_string(),
+            tag.syntax_type_id.to_string(),
+            tag.row.to_string(),
+            tag.column.to_string()])?;
     }
     tx.commit()?;
+    println!("Done!");
     Ok(())
 }
 
-fn scan(sw: Sender<globwalk::DirEntry>, rr: Receiver<Vec<Entry>>, conn: &mut rusqlite::Connection, path: &str) -> Result<(), globwalk::GlobError> {
+fn scan(sw: Sender<globwalk::DirEntry>,
+        rr: Receiver<Vec<Entry>>,
+        conn: &mut rusqlite::Connection,
+        path: &str)
+            -> Result<(), globwalk::GlobError> {
     println!("scan begin");
     let walker = globwalk::GlobWalkerBuilder::from_patterns(
-        path, // BASE_DIR,
+        path,
         &PATTERNS,
     )
     .follow_links(true)
@@ -79,119 +89,140 @@ fn scan(sw: Sender<globwalk::DirEntry>, rr: Receiver<Vec<Entry>>, conn: &mut rus
     .filter_map(Result::ok);
 
     let mut count = 0;
+    let mut res: Vec<Entry> = Vec::new();
 
     println!("scan end");
+
+    // For each file found, ...
     for file in walker {
+        if !file.file_type().is_file() {
+            continue;
+        }
+        // Send the file to tokenizer.
         match sw.send(file) {
             Ok(_) => count += 1,
             Err(e) => println!("Error: {}", e)
         };
-
+        //println!("Todo: {}", count);
+        // Pickup results if there are any already.
         for tags in rr.try_iter() {
             count -= 1;
-            match process(tags, conn) {
-                Ok(_) => continue,
-                Err(e) => {
-                    println!("Error {}", e);
-                    return Ok(());
-                }
-            };
+        //println!("remaining: {}", count);
+            res.extend(tags);
         }
     }
     println!("Finished adding");
+
+    // Pickup and wait for all the remaining results.
     for tags in rr.iter() {
         count -= 1;
-        match process(tags, conn) {
-            Ok(_) => true,
-            Err(e) => {
-                println!("Error {}", e);
-                false
-            }
-        };
+        res.extend(tags);
+        println!("remaining: {}", count);
         if count == 0 {
             break;
         };
     }
+    println!("Picked up all results");
 
-    return Ok(());
-}
-
-// read_to_string can be replaced with include_str!
-// former reads it in run-time, latter reads it in compile-time
-fn create_configuration() -> Result<HashMap<&'static str, TagsConfiguration>, tree_sitter_tags::Error> {
-    let mut conf = HashMap::new();
-
-    conf.insert("rs",
-        TagsConfiguration::new(
-            tree_sitter_rust::language(),
-            &std::fs::read_to_string("./src/tags_rust.scm")
-                .expect("Error in reading file"),
-            "")?);
-
-    let cpp = || TagsConfiguration::new(
-        tree_sitter_cpp::language(),
-        &std::fs::read_to_string("./src/tags_cpp.scm")
-            .expect("Error in reading file"),
-        "");
-    conf.insert("cc", cpp()?);
-    conf.insert("hh", cpp()?);
-    conf.insert("cpp", cpp()?);
-    conf.insert("hpp", cpp()?);
-
-    let c = || TagsConfiguration::new(
-        tree_sitter_c::language(),
-        include_str!("tags_c.scm"),
-        "");
-    conf.insert("c", c()?);
-    conf.insert("h", c()?);
-
-    conf.insert("js",
-        TagsConfiguration::new(
-            tree_sitter_javascript::language(),
-            tree_sitter_javascript::TAGGING_QUERY,
-            tree_sitter_javascript::LOCALS_QUERY)?);
-
-    conf.insert("py",
-        TagsConfiguration::new(
-            tree_sitter_python::language(),
-            tree_sitter_python::TAGGING_QUERY,
-            "")?);
-
-    return Ok(conf);
-}
-
-// worker needs a channel to receive commands to workers
-// and to send results from workers
-fn worker(i: usize, rw: Receiver<globwalk::DirEntry>, sr: Sender<Vec<Entry>>) {
-    println!("worker {}", i);
-    let conf = match create_configuration() {
-        Ok(conf) => conf,
+    match save_to_db(res, conn) {
+        Ok(_) => return Ok(()),
         Err(e) => {
-            println!("Error: {}", e);
-            return;
+            println!("Error {}", e);
+            return Ok(());
         }
     };
-    println!("ready {}", i);
-    for dir_entry in rw.iter() {
-        println!("Thread {} got a job! {}", i, dir_entry.path().display());
-        let ext = match dir_entry.path().extension().and_then(std::ffi::OsStr::to_str) {
-            Some(ext) => ext,
-            _ => continue,
-        };
-        let tagsconf = match conf.get(ext) {
-            Some(tagsconf) => tagsconf,
-            _ => continue,
-        };
+}
 
-        let res = parse(&dir_entry, &tagsconf);
-        match sr.send(res) {
-            Ok(_) => continue,
-            Err(_) => break,
+fn get_conf(confs : &mut HashMap<String, Rc<RefCell<TagsConfiguration>>>, ext : String) -> Option<Rc<RefCell<TagsConfiguration>>> {
+    // Is there already existing configuration for given extension?
+    match confs.get(&ext) {
+        // Yes, there is some configuration...
+        Some(conf) => {
+            // Return it to caller...
+            Some(conf.clone())
+        },
+        // There is no already existing configuration...
+        _ => {
+            let conf = match ext.as_str() {
+                "rs" => (vec!["rs"], TagsConfiguration::new(
+                    tree_sitter_rust::language(),
+                    include_str!("tags_rust.scm"),
+                    "")),
+                "cc"|"hh"|"cpp"|"hpp"|"h"|"c" => (vec!["cc","hh","cpp","hpp"], TagsConfiguration::new(
+                    tree_sitter_cpp::language(),
+                    include_str!("tags_cpp.scm"),
+                    "")),
+//                "c"|"h" => (vec!["c","h"], TagsConfiguration::new(
+//                    tree_sitter_c::language(),
+//                    include_str!("tags_c.scm"),
+//                    "")),
+                "js" => (vec!["js"], TagsConfiguration::new(
+                    tree_sitter_javascript::language(),
+                    tree_sitter_javascript::TAGGING_QUERY,
+                    tree_sitter_javascript::LOCALS_QUERY)),
+                "py" => (vec!["py"], TagsConfiguration::new(
+                    tree_sitter_python::language(),
+                    tree_sitter_python::TAGGING_QUERY,
+                    "")),
+                _ => (vec![], Err(tree_sitter_tags::Error::InvalidLanguage)),
+            };
+
+            return match conf {
+                (exts, Ok(conf)) => {
+                    let val = Rc::new(RefCell::new(conf));
+                    for ext in exts {
+                        confs.insert(ext.to_string(), val.clone());
+                    }
+                    Option::Some(val)
+                },
+                _ => Option::None,
+            };
+        }
+    }
+}
+
+// tokenizer needs a channel to receive commands to workers
+// and to send results from workers
+fn tokenizer(i: usize, rw: Receiver<globwalk::DirEntry>, sr: Sender<Vec<Entry>>) {
+    //println!("tokenizer {}", i);
+
+    let mut confs : HashMap<String, Rc<RefCell<TagsConfiguration>>> = HashMap::new();
+
+    //println!("ready {}", i);
+    for dir_entry in rw.iter() {
+        //println!("Thread {} got a job! {}", i, dir_entry.path().display());
+        let ext = match dir_entry.path().extension().and_then(std::ffi::OsStr::to_str) {
+            Some(ext) => String::from(ext),
+            _ => continue,
         };
+        //println!("It is {}", ext);
+        match get_conf(&mut confs, ext) {
+            Some(conf) => {
+                let res = tokenize(&dir_entry, &*conf.borrow());
+                match sr.send(res) {
+                    Ok(_) => continue,
+                    Err(_) => break,
+                };
+            },
+            _ => {
+            println!("Some error: {}", dir_entry.path().display());
+                match sr.send(vec![]) {
+                    Ok(_) => continue,
+                    Err(_) => break,
+                };
+            }
+        }
     }
 }
 
 fn prepare_db(conn: &mut rusqlite::Connection) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        "PRAGMA journal_mode = OFF;
+         PRAGMA synchronous = 0;
+         PRAGMA cache_size = 1000000;
+         PRAGMA locking_mode = EXCLUSIVE;
+         PRAGMA temp_store = MEMORY;",
+    )?;
     conn.execute(
         "create table if not exists tags (
             id integer primary key,
@@ -259,15 +290,15 @@ fn ttags_find(conn: &mut rusqlite::Connection, is_definition: bool, symbol: &str
 
 fn ttags_create(conn: &mut rusqlite::Connection, path: &str) -> Result<(), globwalk::GlobError> {
     // channel for giving commands to workers
-    let (sw, rw) = bounded(num_cpus::get() * 5);
+    let (sw, rw) = bounded(num_cpus::get() * 10);
     // channel for reporting results from workers
     let (sr, rr) = unbounded();
 
-    for i in 0..num_cpus::get() {
+    for i in 0..num_cpus::get() * 2 {
         let rw = rw.clone();
         let sr = sr.clone();
         thread::spawn(move || {
-            worker(i, rw, sr);
+            tokenizer(i, rw, sr);
         });
     };
 
@@ -286,11 +317,6 @@ fn main()  {
             return;
         }
     };
-    match prepare_db(&mut conn) {
-        Ok(_) => (),
-        Err(e) => println!("Error: {}", e),
-    };
-
     if let Some(symbol) = cli.reference.as_deref() {
         match ttags_find(&mut conn, false, symbol) {
             Ok(_) => (),
@@ -307,8 +333,12 @@ fn main()  {
             Err(e) => println!("Error: {}", e),
         };
     } else {
-        let p : &str = if let Some(path) = cli.complete.as_deref() { path } else { "." };
-        match ttags_create(&mut conn, p) {
+        let path : &str = if let Some(p) = cli.complete.as_deref() { p } else { "." };
+        match prepare_db(&mut conn) {
+            Ok(_) => (),
+            Err(e) => println!("Error: {}", e),
+        };
+        match ttags_create(&mut conn, path) {
             Ok(_) => (),
             Err(e) => println!("Error: {}", e),
         };

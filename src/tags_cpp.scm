@@ -1,6 +1,9 @@
 
 ;; Definitions
 
+(preproc_def
+  name: (identifier) @name) @definition.macro
+
 (function_definition
   (function_declarator
     declarator: (_) @name)) @definition.method
@@ -25,6 +28,15 @@
 
 (class_specifier
   name: (type_identifier) @name) @definition.class
+
+(declaration
+  (init_declarator
+    (pointer_declarator
+      declarator: (identifier) @name))) @definition.identifier
+
+(declaration
+  (init_declarator
+      declarator: (identifier) @name)) @definition.identifier
 
 ;; References
 
