@@ -1,4 +1,3 @@
-use clap::Parser;
 use std::collections::HashMap;
 
 use tree_sitter_tags::TagsContext;
@@ -8,6 +7,13 @@ use crossbeam_channel::{Receiver, Sender, bounded, unbounded};
 use std::thread;
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::env;
+use std::fs;
+
+#[cfg(test)]
+const DEF: bool = true;
+#[cfg(test)]
+const REF: bool = false;
 
 const PATTERNS: [&str; 10] = [ "*.rs", "*.cpp", "*.hpp", "*.ipp", "*.cc", "*.hh", "*.c", "*.h", "*.py", "*.js" ];
 
@@ -21,22 +27,19 @@ struct Entry {
     column: usize,
 }
 
-fn tokenize(file: &globwalk::DirEntry, conf: &TagsConfiguration) -> Vec<Entry> {
+fn tokenize(path: &std::path::Path, conf: &TagsConfiguration) -> Vec<Entry> {
     let mut context = TagsContext::new();
     //println!("file: {}", file.path().display());
-    let code = std::fs::read(file.path()).unwrap();
-    let tags = context.generate_tags(
-        &conf,
-        &code,
-        None,
-    ).unwrap().0;
+    let code = std::fs::read(path).map_err(|e| format!("{}: {}", path.to_string_lossy(), e)).unwrap();
+    let tags = context.generate_tags(&conf, &code, None).unwrap().0;
 
     let mut res: Vec<Entry> = Vec::new();
 //println!("start tokenizing");
     for tag in tags {
         let tag: tree_sitter_tags::Tag = tag.unwrap();
         let entry: Entry = Entry {
-            file: file.path().to_str().unwrap_or("").to_string(),
+            file: path.to_string_lossy().to_string(),
+            // file: path.to_str().unwrap_or("").to_string(),
             name: std::str::from_utf8(&code[tag.name_range]).unwrap_or("").to_string(),
             is_definition: tag.is_definition,
             syntax_type_id: tag.syntax_type_id,
@@ -50,33 +53,10 @@ fn tokenize(file: &globwalk::DirEntry, conf: &TagsConfiguration) -> Vec<Entry> {
     return res;
 }
 
-// tags - all tags retrieved from one file
-fn save_to_db(tags: Vec<Entry>, conn: &mut rusqlite::Connection) -> Result<(), rusqlite::Error> {
-    if tags.len() == 0 {
-        return Ok(());
-    }
-    println!("Storing {} items to database", tags.len());
-    let tx = conn.transaction()?;
-    //tx.execute("delete from tags where file = (?1)", [&tags.get(0).unwrap().file])?;
-    for tag in tags {
-        tx.execute("insert into tags (file, name, is_definition, syntax_type_id, row, column) values (?1, ?2, ?3, ?4, ?5, ?6)", [
-            tag.file,
-            tag.name,
-            tag.is_definition.to_string(),
-            tag.syntax_type_id.to_string(),
-            tag.row.to_string(),
-            tag.column.to_string()])?;
-    }
-    tx.commit()?;
-    println!("Done!");
-    Ok(())
-}
-
 fn scan(sw: Sender<globwalk::DirEntry>,
         rr: Receiver<Vec<Entry>>,
-        conn: &mut rusqlite::Connection,
         path: &str)
-            -> Result<(), globwalk::GlobError> {
+            -> Result<Vec<Entry>, globwalk::GlobError> {
     println!("scan begin");
     let walker = globwalk::GlobWalkerBuilder::from_patterns(
         path,
@@ -124,38 +104,36 @@ fn scan(sw: Sender<globwalk::DirEntry>,
     }
     println!("Picked up all results");
 
-    match save_to_db(res, conn) {
-        Ok(_) => return Ok(()),
-        Err(e) => {
-            println!("Error {}", e);
-            return Ok(());
-        }
-    };
+    return Ok(res);
 }
 
-fn get_conf(confs : &mut HashMap<String, Rc<RefCell<TagsConfiguration>>>, ext : String) -> Option<Rc<RefCell<TagsConfiguration>>> {
+fn get_conf(confs : &mut HashMap<String, Rc<RefCell<TagsConfiguration>>>, ext : String) -> Rc<RefCell<TagsConfiguration>> {
     // Is there already existing configuration for given extension?
+println!("ext {}", ext);
     match confs.get(&ext) {
         // Yes, there is some configuration...
         Some(conf) => {
             // Return it to caller...
-            Some(conf.clone())
+            println!(" we had one!");
+            conf.clone()
         },
         // There is no already existing configuration...
         _ => {
+            println!(" creating new one");
             let conf = match ext.as_str() {
                 "rs" => (vec!["rs"], TagsConfiguration::new(
                     tree_sitter_rust::language(),
-                    include_str!("tags_rust.scm"),
+                    &fs::read_to_string(format!("{}/src/module_ttags/tags_rust.scm", env!("CARGO_MANIFEST_DIR")))
+                        .expect("Can't read tags_rust.scm"),
+                    // include_str!("tags_rust.scm"),
                     "")),
-                "cc"|"hh"|"cpp"|"hpp"|"h"|"c" => (vec!["cc","hh","cpp","hpp"], TagsConfiguration::new(
+                // Oh yes, lots of c++ source code can and is in c file...
+                "cc"|"hh"|"cpp"|"hpp"|"h"|"c" => (vec!["cc","hh","cpp","hpp","h","c"], TagsConfiguration::new(
                     tree_sitter_cpp::language(),
-                    include_str!("tags_cpp.scm"),
+                    &fs::read_to_string(format!("{}/src/module_ttags/tags_cpp.scm", env!("CARGO_MANIFEST_DIR")))
+                        .expect("Can't read tags_cpp.scm"),
+                    // include_str!("tags_cpp.scm"),
                     "")),
-//                "c"|"h" => (vec!["c","h"], TagsConfiguration::new(
-//                    tree_sitter_c::language(),
-//                    include_str!("tags_c.scm"),
-//                    "")),
                 "js" => (vec!["js"], TagsConfiguration::new(
                     tree_sitter_javascript::language(),
                     tree_sitter_javascript::TAGGING_QUERY,
@@ -173,9 +151,12 @@ fn get_conf(confs : &mut HashMap<String, Rc<RefCell<TagsConfiguration>>>, ext : 
                     for ext in exts {
                         confs.insert(ext.to_string(), val.clone());
                     }
-                    Option::Some(val)
+                    val
                 },
-                _ => Option::None,
+                (exts, Result::Err(e)) => {
+                    println!("Problem in scm of {:?}: {}", exts, e);
+                    panic!();
+                },
             };
         }
     }
@@ -183,7 +164,7 @@ fn get_conf(confs : &mut HashMap<String, Rc<RefCell<TagsConfiguration>>>, ext : 
 
 // tokenizer needs a channel to receive commands to workers
 // and to send results from workers
-fn tokenizer(i: usize, rw: Receiver<globwalk::DirEntry>, sr: Sender<Vec<Entry>>) {
+fn tokenizer(rw: Receiver<globwalk::DirEntry>, sr: Sender<Vec<Entry>>) {
     //println!("tokenizer {}", i);
 
     let mut confs : HashMap<String, Rc<RefCell<TagsConfiguration>>> = HashMap::new();
@@ -195,27 +176,94 @@ fn tokenizer(i: usize, rw: Receiver<globwalk::DirEntry>, sr: Sender<Vec<Entry>>)
             Some(ext) => String::from(ext),
             _ => continue,
         };
-        //println!("It is {}", ext);
-        match get_conf(&mut confs, ext) {
-            Some(conf) => {
-                let res = tokenize(&dir_entry, &*conf.borrow());
-                match sr.send(res) {
-                    Ok(_) => continue,
-                    Err(_) => break,
-                };
-            },
-            _ => {
-            println!("Some error: {}", dir_entry.path().display());
-                match sr.send(vec![]) {
-                    Ok(_) => continue,
-                    Err(_) => break,
-                };
-            }
-        }
+        let conf = get_conf(&mut confs, ext);
+        let res = tokenize(&dir_entry.path(), &*conf.borrow());
+        match sr.send(res) {
+            Ok(_) => continue,
+            Err(_) => break,
+        };
     }
 }
 
-fn prepare_db(conn: &mut rusqlite::Connection) -> Result<(), rusqlite::Error> {
+#[test]
+fn test_tokenize_cpp() {
+    let mut confs : HashMap<String, Rc<RefCell<TagsConfiguration>>> = HashMap::new();
+    let conf = get_conf(&mut confs, "cpp".to_string());
+    let res = tokenize(std::path::Path::new(&format!("{}/src/module_ttags/test.cpp", env!("CARGO_MANIFEST_DIR"))), &*conf.borrow());
+println!("{:?}", res);
+    let q = |res : &Vec<Entry>, name, row, is_definition| {
+        res.iter().any(|entry| entry.name == name
+            && entry.is_definition == is_definition
+            && entry.row == row) };
+    let qq = |res : &Vec<Entry>, name, row, is_definition| {
+        assert!(q(&res, name, row, is_definition), "{}, row: {}, {}, not found in {:?}", name, row, is_definition, res) };
+    let nq = |res : &Vec<Entry>, name, row, is_definition| {
+        assert!(!q(&res, name, row, is_definition), "{}, row: {}, {}, found in {:?}", name, row, is_definition, res) };
+
+    qq(&res, "Class_1", 1, DEF); // class
+    qq(&res, "Class_1", 4, DEF); // constructor
+    nq(&res, "m_Variable_1", 4, REF);
+    nq(&res, "m_Struct_1", 4, REF);
+    qq(&res, "Setup", 5, DEF);
+    nq(&res, "m_Variable_1", 5, REF);
+    qq(&res, "Work", 6, DEF);
+    qq(&res, "m_Variable_1", 8, DEF);
+    qq(&res, "m_Struct_1", 9, DEF);
+    qq(&res, "Work", 12, DEF);
+    // Local variables not wanted!
+    nq(&res, "local_1", 14, DEF);
+
+    qq(&res, "m_Variable_1", 15, REF);
+
+    // Don't want this in database as there is
+    // many many of such in any source code.
+    // Use grep to find them.
+    nq(&res, "m_Struct_1", 16, REF);
+    qq(&res, "Test", 16, REF);
+
+    qq(&res, "MyStruct", 19, REF);
+    nq(&res, "myStruct", 19, DEF);
+
+    nq(&res, "myStruct", 20, REF);
+    qq(&res, "Todo", 20, REF);
+}
+
+// tags - all tags retrieved from one file
+fn save_to_db(tags: Vec<Entry>, conn: &mut rusqlite::Connection) -> Result<(), rusqlite::Error> {
+    println!("Storing {} items to database", tags.len());
+    let tx = conn.transaction()?;
+    let chunks = 50;
+    let mut st = format!("insert into tags values{}", " (NULL, ?, ?, ?, ?, ?, ?),".repeat(chunks));
+    st.pop(); // pop the last character: ','
+    println!("{}", st);
+    {
+    let mut stm = tx.prepare_cached(st.as_str()).unwrap();
+    //tx.execute("delete from tags where file = (?1)", [&tags.get(0).unwrap().file])?;
+    for tag_chunks in tags.chunks(chunks) {
+        let mut param_values: Vec<_> = Vec::new();
+        for tag in tag_chunks {
+            param_values.push(&tag.file as &dyn rusqlite::ToSql);
+            param_values.push(&tag.name as &dyn rusqlite::ToSql);
+            param_values.push(&tag.is_definition as &dyn rusqlite::ToSql);
+            param_values.push(&tag.syntax_type_id as &dyn rusqlite::ToSql);
+            param_values.push(&tag.row as &dyn rusqlite::ToSql);
+            param_values.push(&tag.column as &dyn rusqlite::ToSql);
+        }
+            if tag_chunks.len() != chunks {
+                st = format!("insert into tags values{}", " (NULL, ?, ?, ?, ?, ?, ?),".repeat(tag_chunks.len()));
+                st.pop(); // pop the last character: ','
+                stm = tx.prepare_cached(st.as_str()).unwrap();
+            }
+            stm.execute(&*param_values).unwrap();
+        }
+    }
+    tx.commit()?;
+    conn.execute("create index if not exists id on tags(id)", [])?;
+    conn.execute("create index if not exists idx_tags on tags(name, is_definition)", [])?;
+    Ok(())
+}
+
+pub fn prepare_db(conn: &mut rusqlite::Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch(
         "PRAGMA journal_mode = OFF;
          PRAGMA synchronous = 0;
@@ -223,6 +271,7 @@ fn prepare_db(conn: &mut rusqlite::Connection) -> Result<(), rusqlite::Error> {
          PRAGMA locking_mode = EXCLUSIVE;
          PRAGMA temp_store = MEMORY;",
     )?;
+    conn.execute("drop table if exists tags", [])?;
     conn.execute(
         "create table if not exists tags (
             id integer primary key,
@@ -235,35 +284,12 @@ fn prepare_db(conn: &mut rusqlite::Connection) -> Result<(), rusqlite::Error> {
          )",
         [],
     )?;
-    conn.execute(
-        "create index if not exists idx_tags on tags(name, is_definition)",
-        [],
-    )?;
+    conn.execute("drop index if exists id", [])?;
+    conn.execute("drop index if exists idx_tags", [])?;
     Ok(())
 }
 
-/// By default a tag database is created for current folder recursively
-#[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = None)]
-struct Cli {
-    /// Find references
-    #[clap(long, short)]
-    reference: Option<String>,
-
-    /// Find definitions
-    #[clap(long, short)]
-    definition: Option<String>,
-
-    /// Complete symbols
-    #[clap(short)]
-    complete: Option<String>,
-
-    /// Path to scan
-    #[clap(long, short)]
-    path: Option<String>,
-}
-
-fn ttags_complete(conn: &mut rusqlite::Connection, symbol: &str) -> Result<(), rusqlite::Error> {
+pub fn ttags_complete(conn: &mut rusqlite::Connection, symbol: &str) -> Result<(), rusqlite::Error> {
     let mut stmt = conn.prepare("SELECT DISTINCT name FROM tags WHERE is_definition=? AND name GLOB ?")?;
     let mut rows = stmt.query(["true".to_string(), format!("{}", symbol)])?;
     while let Some(row) = rows.next()? {
@@ -273,7 +299,7 @@ fn ttags_complete(conn: &mut rusqlite::Connection, symbol: &str) -> Result<(), r
     return Ok(());
 }
 
-fn ttags_find(conn: &mut rusqlite::Connection, is_definition: bool, symbol: &str) -> Result<(), rusqlite::Error> {
+pub fn ttags_find(conn: &mut rusqlite::Connection, is_definition: bool, symbol: &str) -> Result<(), rusqlite::Error> {
     let mut stmt = conn.prepare(
         "SELECT DISTINCT file, name, is_definition, syntax_type_id, row, column FROM tags WHERE is_definition=? AND name GLOB ?")?;
     let mut rows = stmt.query([
@@ -288,59 +314,30 @@ fn ttags_find(conn: &mut rusqlite::Connection, is_definition: bool, symbol: &str
     return Ok(());
 }
 
-fn ttags_create(conn: &mut rusqlite::Connection, path: &str) -> Result<(), globwalk::GlobError> {
+pub fn ttags_create(conn: &mut rusqlite::Connection, path: &str) -> Result<(), globwalk::GlobError> {
     // channel for giving commands to workers
     let (sw, rw) = bounded(num_cpus::get() * 10);
     // channel for reporting results from workers
     let (sr, rr) = unbounded();
 
-    for i in 0..num_cpus::get() * 2 {
+    //for i in 0..1 { // num_cpus::get() * 2 {
         let rw = rw.clone();
         let sr = sr.clone();
         thread::spawn(move || {
-            tokenizer(i, rw, sr);
+            tokenizer(rw, sr);
         });
-    };
+    //};
 
     // scanner needs to be able to give commands to workers (sw)
     // and to retrieve results from workers (rr)
-    return scan(sw, rr, conn, path);
-}
+    let res = scan(sw, rr, path);
 
-fn main()  {
-    let cli = Cli::parse();
-
-    let mut conn = match rusqlite::Connection::open("ttags.db") {
-        Ok(conn) => conn,
+    match save_to_db(res?, conn) {
+        Ok(_) => return Ok(()),
         Err(e) => {
-            println!("Error: {}", e);
-            return;
+            println!("Error {}", e);
+            return Ok(());
         }
     };
-    if let Some(symbol) = cli.reference.as_deref() {
-        match ttags_find(&mut conn, false, symbol) {
-            Ok(_) => (),
-            Err(e) => println!("Error: {}", e),
-        };
-    } else if let Some(symbol) = cli.definition.as_deref() {
-        match ttags_find(&mut conn, true, symbol) {
-            Ok(_) => (),
-            Err(e) => println!("Error: {}", e),
-        };
-    } else if let Some(symbol) = cli.complete.as_deref() {
-        match ttags_complete(&mut conn, symbol) {
-            Ok(_) => (),
-            Err(e) => println!("Error: {}", e),
-        };
-    } else {
-        let path : &str = if let Some(p) = cli.complete.as_deref() { p } else { "." };
-        match prepare_db(&mut conn) {
-            Ok(_) => (),
-            Err(e) => println!("Error: {}", e),
-        };
-        match ttags_create(&mut conn, path) {
-            Ok(_) => (),
-            Err(e) => println!("Error: {}", e),
-        };
-    }
 }
+
