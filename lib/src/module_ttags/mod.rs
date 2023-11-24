@@ -109,12 +109,10 @@ fn scan(sw: Sender<globwalk::DirEntry>,
 
 fn get_conf(confs : &mut HashMap<String, Rc<RefCell<TagsConfiguration>>>, ext : String) -> Rc<RefCell<TagsConfiguration>> {
     // Is there already existing configuration for given extension?
-println!("ext {}", ext);
     match confs.get(&ext) {
         // Yes, there is some configuration...
         Some(conf) => {
             // Return it to caller...
-            println!(" we had one!");
             conf.clone()
         },
         // There is no already existing configuration...
@@ -128,7 +126,7 @@ println!("ext {}", ext);
                     // include_str!("tags_rust.scm"),
                     "")),
                 // Oh yes, lots of c++ source code can and is in c file...
-                "cc"|"hh"|"cpp"|"hpp"|"h"|"c" => (vec!["cc","hh","cpp","hpp","h","c"], TagsConfiguration::new(
+                "cc"|"hh"|"cpp"|"hpp"|"ipp"|"h"|"c" => (vec!["cc","hh","cpp","hpp","ipp", "h","c"], TagsConfiguration::new(
                     tree_sitter_cpp::language(),
                     &fs::read_to_string(format!("{}/src/module_ttags/tags_cpp.scm", env!("CARGO_MANIFEST_DIR")))
                         .expect("Can't read tags_cpp.scm"),
@@ -300,15 +298,16 @@ pub fn ttags_complete(conn: &mut rusqlite::Connection, symbol: &str) -> Result<(
 }
 
 pub fn ttags_find(conn: &mut rusqlite::Connection, is_definition: bool, symbol: &str) -> Result<(), rusqlite::Error> {
+    println!("symbol: {}", symbol);
     let mut stmt = conn.prepare(
-        "SELECT DISTINCT file, name, is_definition, syntax_type_id, row, column FROM tags WHERE is_definition=? AND name GLOB ?")?;
+        "SELECT DISTINCT file,name,row FROM tags WHERE is_definition=? AND name GLOB ?")?;
     let mut rows = stmt.query([
         format!("{}", if is_definition { "true" } else { "false" }),
         format!("{}", symbol)])?;
     while let Some(row) = rows.next()? {
         println!("{}:{}:{}",
             row.get::<_, String>(0)?,   // file
-            row.get::<_, usize>(4)?,    // row
+            row.get::<_, usize>(2)?,    // row
             row.get::<_, String>(1)?);  // name
     }
     return Ok(());
@@ -320,13 +319,13 @@ pub fn ttags_create(conn: &mut rusqlite::Connection, path: &str) -> Result<(), g
     // channel for reporting results from workers
     let (sr, rr) = unbounded();
 
-    //for i in 0..1 { // num_cpus::get() * 2 {
+    for i in 0..num_cpus::get() * 2 {
         let rw = rw.clone();
         let sr = sr.clone();
         thread::spawn(move || {
             tokenizer(rw, sr);
         });
-    //};
+    };
 
     // scanner needs to be able to give commands to workers (sw)
     // and to retrieve results from workers (rr)
