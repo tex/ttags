@@ -288,6 +288,11 @@ fn prepare_db(conn: &mut rusqlite::Connection) -> Result<(), rusqlite::Error> {
 }
 
 pub fn ttags_create(conn: &mut rusqlite::Connection, path: &str) -> Result<(), globwalk::GlobError> {
+    match prepare_db(conn) {
+        Ok(_) => (),
+        Err(e) => { println!("Error: {}", e); return Ok(())},
+    };
+
     // channel for giving commands to workers
     let (sw, rw) = bounded(num_cpus::get() * 10);
     // channel for reporting results from workers

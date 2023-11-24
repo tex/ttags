@@ -25,8 +25,8 @@ struct Cli {
 }
 
 pub fn ttags_complete(conn: &mut rusqlite::Connection, symbol: &str) -> Result<(), rusqlite::Error> {
-    let mut stmt = conn.prepare("SELECT DISTINCT name FROM tags WHERE is_definition=? AND name GLOB ?")?;
-    let mut rows = stmt.query(["true".to_string(), format!("{}", symbol)])?;
+    let mut stmt = conn.prepare("SELECT DISTINCT name FROM tags WHERE is_definition=?1 AND name GLOB ?2")?;
+    let mut rows = stmt.query(rusqlite::params![true, symbol])?;
     while let Some(row) = rows.next()? {
         println!("{}",
             row.get::<_, String>(0)?);  // name
@@ -35,14 +35,9 @@ pub fn ttags_complete(conn: &mut rusqlite::Connection, symbol: &str) -> Result<(
 }
 
 fn ttags_find(conn: &mut rusqlite::Connection, is_definition: bool, symbol: &str) -> Result<(), rusqlite::Error> {
-    println!("symbol: {}", symbol);
     let mut stmt = conn.prepare(
-        "SELECT DISTINCT file,name,row FROM tags WHERE is_definition=?1")?;
-        //"SELECT DISTINCT file,name,row FROM tags WHERE is_definition=? AND name GLOB ?")?;
-    let mut rows = stmt.query(["true"
-        //format!("{}", if is_definition { "true" } else { "false" }),
-//        format!("{}", symbol)
-        ])?;
+        "SELECT DISTINCT file,name,row FROM tags WHERE is_definition=?1 AND name GLOB ?2")?;
+    let mut rows = stmt.query(rusqlite::params![is_definition, symbol])?;
     while let Some(row) = rows.next()? {
         println!("{}:{}:{}",
             row.get::<_, String>(0)?,   // file
@@ -79,10 +74,6 @@ fn main()  {
         };
     } else {
         let path : &str = if let Some(p) = cli.complete.as_deref() { p } else { "." };
-        match prepare_db(&mut conn) {
-            Ok(_) => (),
-            Err(e) => println!("Error: {}", e),
-        };
         match ttags_create(&mut conn, path) {
             Ok(_) => (),
             Err(e) => println!("Error: {}", e),

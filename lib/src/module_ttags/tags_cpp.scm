@@ -33,6 +33,8 @@
 
 (preproc_def
   name: (identifier) @name) @definition.macro
+(preproc_function_def
+  name: (identifier) @name) @definition.macro
 
 ;;(namespace_definition
 ;;  name: (identifier) @name) @definition.namespace
