@@ -24,6 +24,34 @@ struct Cli {
     path: Option<String>,
 }
 
+pub fn ttags_complete(conn: &mut rusqlite::Connection, symbol: &str) -> Result<(), rusqlite::Error> {
+    let mut stmt = conn.prepare("SELECT DISTINCT name FROM tags WHERE is_definition=? AND name GLOB ?")?;
+    let mut rows = stmt.query(["true".to_string(), format!("{}", symbol)])?;
+    while let Some(row) = rows.next()? {
+        println!("{}",
+            row.get::<_, String>(0)?);  // name
+    }
+    return Ok(());
+}
+
+fn ttags_find(conn: &mut rusqlite::Connection, is_definition: bool, symbol: &str) -> Result<(), rusqlite::Error> {
+    println!("symbol: {}", symbol);
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT file,name,row FROM tags WHERE is_definition=?1")?;
+        //"SELECT DISTINCT file,name,row FROM tags WHERE is_definition=? AND name GLOB ?")?;
+    let mut rows = stmt.query(["true"
+        //format!("{}", if is_definition { "true" } else { "false" }),
+//        format!("{}", symbol)
+        ])?;
+    while let Some(row) = rows.next()? {
+        println!("{}:{}:{}",
+            row.get::<_, String>(0)?,   // file
+            row.get::<_, usize>(2)?,    // row
+            row.get::<_, String>(1)?);  // name
+    }
+    return Ok(());
+}
+
 fn main()  {
     let cli = Cli::parse();
 

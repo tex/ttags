@@ -9,7 +9,7 @@ edition = "2021"
 globwalk = "0.8.1"
 num_cpus = "1.15.0"
 crossbeam-channel = "0.5"
-rusqlite = { version = "0.28.0", features = ["bundled"] }
+rusqlite = { version = "0.30.0", features = ["bundled"] }
 tree-sitter = "0.20.10"
 tree-sitter-tags = "0.20.2"
 # tree-sitter-c = "0.20.2"

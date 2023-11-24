@@ -261,7 +261,7 @@ fn save_to_db(tags: Vec<Entry>, conn: &mut rusqlite::Connection) -> Result<(), r
     Ok(())
 }
 
-pub fn prepare_db(conn: &mut rusqlite::Connection) -> Result<(), rusqlite::Error> {
+fn prepare_db(conn: &mut rusqlite::Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch(
         "PRAGMA journal_mode = OFF;
          PRAGMA synchronous = 0;
@@ -285,32 +285,6 @@ pub fn prepare_db(conn: &mut rusqlite::Connection) -> Result<(), rusqlite::Error
     conn.execute("drop index if exists id", [])?;
     conn.execute("drop index if exists idx_tags", [])?;
     Ok(())
-}
-
-pub fn ttags_complete(conn: &mut rusqlite::Connection, symbol: &str) -> Result<(), rusqlite::Error> {
-    let mut stmt = conn.prepare("SELECT DISTINCT name FROM tags WHERE is_definition=? AND name GLOB ?")?;
-    let mut rows = stmt.query(["true".to_string(), format!("{}", symbol)])?;
-    while let Some(row) = rows.next()? {
-        println!("{}",
-            row.get::<_, String>(0)?);  // name
-    }
-    return Ok(());
-}
-
-pub fn ttags_find(conn: &mut rusqlite::Connection, is_definition: bool, symbol: &str) -> Result<(), rusqlite::Error> {
-    println!("symbol: {}", symbol);
-    let mut stmt = conn.prepare(
-        "SELECT DISTINCT file,name,row FROM tags WHERE is_definition=? AND name GLOB ?")?;
-    let mut rows = stmt.query([
-        format!("{}", if is_definition { "true" } else { "false" }),
-        format!("{}", symbol)])?;
-    while let Some(row) = rows.next()? {
-        println!("{}:{}:{}",
-            row.get::<_, String>(0)?,   // file
-            row.get::<_, usize>(2)?,    // row
-            row.get::<_, String>(1)?);  // name
-    }
-    return Ok(());
 }
 
 pub fn ttags_create(conn: &mut rusqlite::Connection, path: &str) -> Result<(), globwalk::GlobError> {

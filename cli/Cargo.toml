@@ -7,5 +7,5 @@ edition = "2021"
 
 [dependencies]
 lib = { path = "../lib" }
-rusqlite = { version = "0.28.0", features = ["bundled"] }
+rusqlite = { version = "0.30.0", features = ["bundled"] }
 clap = { version = "3.2.22", features = ["derive"] }
