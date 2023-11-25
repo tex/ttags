@@ -25,18 +25,31 @@ struct Cli {
 }
 
 pub fn ttags_complete(conn: &mut rusqlite::Connection, symbol: &str) -> Result<(), rusqlite::Error> {
-    let mut stmt = conn.prepare("SELECT DISTINCT name FROM tags WHERE is_definition=?1 AND name GLOB ?2")?;
-    let mut rows = stmt.query(rusqlite::params![true, symbol])?;
+    let mut query = "SELECT DISTINCT name FROM db0.tags WHERE is_definition=true AND name GLOB ?1".to_string();
+    for_each_db(|_path, index| {
+        if index != 0 {
+            query.push_str(
+                &format!(" UNION ALL SELECT DISTINCT name FROM db{}.tags WHERE is_definition=true AND name GLOB ?1", index));
+        }
+    });
+    let mut stmt = conn.prepare(&query)?;
+    let mut rows = stmt.query(rusqlite::params![symbol])?;
     while let Some(row) = rows.next()? {
         println!("{}",
             row.get::<_, String>(0)?);  // name
     }
-    return Ok(());
+    Ok(())
 }
 
 fn ttags_find(conn: &mut rusqlite::Connection, is_definition: bool, symbol: &str) -> Result<(), rusqlite::Error> {
-    let mut stmt = conn.prepare(
-        "SELECT DISTINCT file,name,row FROM tags WHERE is_definition=?1 AND name GLOB ?2")?;
+    let mut query = "SELECT DISTINCT file,name,row FROM db0.tags WHERE is_definition=?1 AND name GLOB ?2".to_string();
+    for_each_db(|_path, index| {
+        if index != 0 {
+            query.push_str(
+                &format!(" UNION ALL SELECT DISTINCT file,name,row FROM db{}.tags WHERE is_definition=?1 AND name GLOB ?2", index));
+        }
+    });
+    let mut stmt = conn.prepare(&query)?;
     let mut rows = stmt.query(rusqlite::params![is_definition, symbol])?;
     while let Some(row) = rows.next()? {
         println!("{}:{}:{}",
@@ -44,39 +57,40 @@ fn ttags_find(conn: &mut rusqlite::Connection, is_definition: bool, symbol: &str
             row.get::<_, usize>(2)?,    // row
             row.get::<_, String>(1)?);  // name
     }
-    return Ok(());
+    Ok(())
+}
+
+fn for_each_db<F>(mut f: F) where F: FnMut(&std::path::Path, usize) {
+    let mut index : usize = 0;
+    for file in globwalk::glob(".ttags.*.db").expect("Error when searching for .ttags.*.db files") {
+        if let Ok(file) = file {
+            f(file.path(), index);
+            index += 1;
+        }
+    }
+}
+
+fn open_db() -> rusqlite::Connection {
+    let conn = rusqlite::Connection::open(":memory:").expect("Error opening in-memory database");
+    for_each_db(|file, index| {
+        conn.execute(&format!("ATTACH \"{}\" as db{};", file.to_string_lossy(), index), [])
+            .expect(&format!("Attaching database ({}) failed", file.to_string_lossy()));
+    });
+    conn
 }
 
 fn main()  {
     let cli = Cli::parse();
+    let mut conn = open_db();
 
-    let mut conn = match rusqlite::Connection::open("ttags.db") {
-        Ok(conn) => conn,
-        Err(e) => {
-            println!("Error: {}", e);
-            return;
-        }
-    };
     if let Some(symbol) = cli.reference.as_deref() {
-        match ttags_find(&mut conn, false, symbol) {
-            Ok(_) => (),
-            Err(e) => println!("Error: {}", e),
-        };
+        ttags_find(&mut conn, false, symbol).expect("Find reference failed");
     } else if let Some(symbol) = cli.definition.as_deref() {
-        match ttags_find(&mut conn, true, symbol) {
-            Ok(_) => (),
-            Err(e) => println!("Error: {}", e),
-        };
+        ttags_find(&mut conn, true, symbol).expect("Find definition failed");
     } else if let Some(symbol) = cli.complete.as_deref() {
-        match ttags_complete(&mut conn, symbol) {
-            Ok(_) => (),
-            Err(e) => println!("Error: {}", e),
-        };
+        ttags_complete(&mut conn, symbol).expect("Find completion failed");
     } else {
-        let path : &str = if let Some(p) = cli.complete.as_deref() { p } else { "." };
-        match ttags_create(&mut conn, path) {
-            Ok(_) => (),
-            Err(e) => println!("Error: {}", e),
-        };
+        let path: &str = if let Some(p) = cli.complete.as_deref() { p } else { "." };
+        ttags_create(path);
     }
 }
