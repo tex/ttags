@@ -83,7 +83,7 @@ fn test_tokenize_cpp() {
 
 fn tokenize(path: &std::path::Path, conf: &TagsConfiguration) -> Vec<Entry> {
     // Read source code to tokenize
-    let code = std::fs::read(path).map_err(|e| format!("{}: {}", path.to_string_lossy(), e)).unwrap();
+    let code = std::fs::read(path).expect(&format!("Failed to read file ({})", path.to_string_lossy()));
     // Create TS context and generate tags from the source code
     let mut context = TagsContext::new();
     let tags = context.generate_tags(&conf, &code, None).unwrap().0;
