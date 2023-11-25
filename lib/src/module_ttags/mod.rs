@@ -213,16 +213,14 @@ fn tokenizer(rw: Receiver<globwalk::DirEntry>, sr: Sender<Vec<Entry>>) {
     let mut confs : HashMap<String, Rc<RefCell<TagsConfiguration>>> = HashMap::new();
 
     for dir_entry in rw.iter() {
-        let ext = match dir_entry.path().extension().and_then(std::ffi::OsStr::to_str) {
-            Some(ext) => String::from(ext),
-            _ => continue,
-        };
-        let conf = get_tags_configuration(&mut confs, ext);
+        let ext = dir_entry
+            .path()
+            .extension()
+            .and_then(std::ffi::OsStr::to_str)
+            .expect(&format!("Failed to get extension of file ({})", dir_entry.path().to_string_lossy()));
+        let conf = get_tags_configuration(&mut confs, ext.to_string());
         let res = tokenize(&dir_entry.path(), &*conf.borrow());
-        match sr.send(res) {
-            Ok(_) => continue,
-            Err(_) => panic!(),
-        };
+        sr.send(res).expect("Failed to send message with results to control thread");
     }
 }
 
