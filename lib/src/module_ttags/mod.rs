@@ -292,6 +292,31 @@ fn prepare_db(conn: &mut rusqlite::Connection) -> Result<(), rusqlite::Error> {
     Ok(())
 }
 
+#[test]
+fn compute_chunk_size_test()
+{
+    // O [10, 10, 10, 1]
+    // O [9, 9, 9, 4]
+    // O [8, 8, 8, 7]
+    // X [7, 7, 7, 10]
+
+    assert_eq!(compute_chunk_size(31, 4), 8);
+}
+
+// Chunks size as big as long as the remaining last chunk
+// is as big as possible but not bigger than previous chunks size.
+// Simple division 31/4 => 7 => 7 + 7 + 7 + 7 + 3
+// This function chooses 8 + 8 + 8 + 7
+fn compute_chunk_size(size: usize, chunks: usize) -> usize {
+    let mut chunk_size = size / (chunks - 1);
+    let mut last_chunk_size = size % (chunks - 1);
+    while last_chunk_size + 1 * (chunks - 1) < chunk_size {
+        last_chunk_size += 1 * (chunks - 1);
+        chunk_size -= 1;
+    }
+    chunk_size
+}
+
 pub fn ttags_create(path: &str) {
     // Channel for giving commands to workers
     let (sw, rw) = bounded(num_cpus::get() * 10);
@@ -311,7 +336,8 @@ pub fn ttags_create(path: &str) {
     let res = scan(sw, rr, path).expect("Error when scanning and parsing files");
     // According to https://www.sqlite.org/limits.html the default
     // maximum number of attached databases in sqlite is 10.
-    res.par_chunks(res.len() / cmp::min(9, cmp::max(1, num_cpus::get() - 1)))
+    res.par_chunks(compute_chunk_size(
+            res.len(), cmp::min(10, cmp::max(1, num_cpus::get() - 1))))
         .enumerate()
         .for_each(|(index, chunk)| { save_chunk_to_db(index, chunk); });
 }
