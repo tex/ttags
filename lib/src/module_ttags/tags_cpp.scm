@@ -21,13 +21,6 @@
 (type_definition 
   declarator: (type_identifier) @name) @definition.type
 
-;; typedef void (*SomeHandsomeFnc)(const char* file, int32_t line, intptr_t arg1, intptr_t arg2);
-(type_definition
-  (function_declarator
-    (parenthesized_declarator
-      (pointer_declarator
-        declarator: (type_identifier) @name)))) @definition.type
-
 (enum_specifier
   name: (type_identifier) @name) @definition.type
 
@@ -37,6 +30,13 @@
 ;; ---
 
 ;; Definitions
+
+;; typedef void (*SomeHandsomeFnc)(const char* file, int32_t line, intptr_t arg1, intptr_t arg2);
+(type_definition
+  (function_declarator
+    (parenthesized_declarator
+      (pointer_declarator
+        declarator: (type_identifier) @name)))) @definition.type
 
 (preproc_def
   name: (identifier) @name) @definition.macro
@@ -67,11 +67,16 @@
 
 ;; References
 
-(call_expression
-  function: (qualified_identifier) @name) @reference.call
+;;(call_expression
+;;  function: (qualified_identifier) @name) @reference.call
 
 (call_expression
   function: (identifier) @name) @reference.call
+
+;; XXX::Test()
+(call_expression
+  (qualified_identifier
+    name: (identifier) @name)) @reference.call
 
 ;; m_Struct_1.XXX();
 ;;(call_expression
