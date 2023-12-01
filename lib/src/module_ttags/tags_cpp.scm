@@ -21,6 +21,13 @@
 (type_definition 
   declarator: (type_identifier) @name) @definition.type
 
+;; typedef void (*SomeHandsomeFnc)(const char* file, int32_t line, intptr_t arg1, intptr_t arg2);
+(type_definition
+  (function_declarator
+    (parenthesized_declarator
+      (pointer_declarator
+        declarator: (type_identifier) @name)))) @definition.type
+
 (enum_specifier
   name: (type_identifier) @name) @definition.type
 
@@ -66,12 +73,12 @@
 (call_expression
   function: (identifier) @name) @reference.call
 
-;; m_Struct_1.XXX()
+;; m_Struct_1.XXX();
 ;;(call_expression
 ;;  (field_expression
 ;;    argument: (identifier) @name)) @reference.call
 
-;; XXX.Test()
+;; XXX.Test();
 (call_expression
   (field_expression
     field: (field_identifier) @name)) @reference.call
