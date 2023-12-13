@@ -73,6 +73,11 @@
 (call_expression
   function: (identifier) @name) @reference.call
 
+;; xyz(TEST)
+(call_expression
+  (argument_list
+    (identifier) @name)) @reference.identifier
+
 ;; XXX::Test()
 (call_expression
   (qualified_identifier
