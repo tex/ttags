@@ -136,8 +136,10 @@ fn get_tags_configuration(confs : &mut HashMap<String, Rc<RefCell<TagsConfigurat
 
 fn tokenize(path: &std::path::Path, conf: &TagsConfiguration) -> Vec<Entry> {
     // Read source code to tokenize
-    let code = std::fs::read(path).expect(&format!("Failed to read file ({})", path.to_string_lossy()));
-    // Create TS context and generate tags from the source code
+    let code = std::fs::read(path)
+        .map_err(|err| println!("Failed to read file ({}), error ({})", path.to_string_lossy(), err))
+        .unwrap_or_default();
+    // Create TreeSitter context and generate tags from the source code
     let mut context = TagsContext::new();
     let tags = context.generate_tags(&conf, &code, None).unwrap().0;
 
@@ -297,6 +299,6 @@ pub fn ttags_create(path: &str) {
         .par_chunks(compute_chunk_size(
             results.len(), cmp::min(10, cmp::max(1, num_cpus::get() - 1))))
         .enumerate()
-        .for_each(|(index, chunk)| { save_chunk_to_db(index, chunk); });
+        .for_each(|(index, chunk)| save_chunk_to_db(index, chunk) );
 }
 
