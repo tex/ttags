@@ -3,12 +3,9 @@ use std::collections::HashMap;
 use tree_sitter_tags::TagsContext;
 use tree_sitter_tags::TagsConfiguration;
 
-use crossbeam_channel::{Receiver, Sender, bounded, unbounded};
-
 extern crate rayon;
 use rayon::prelude::*;
 
-use std::thread;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::env;
@@ -81,76 +78,6 @@ fn test_tokenize_cpp() {
     qq(&res, "Todo", 20, REF);
 }
 
-fn tokenize(path: &std::path::Path, conf: &TagsConfiguration) -> Vec<Entry> {
-    // Read source code to tokenize
-    let code = std::fs::read(path).expect(&format!("Failed to read file ({})", path.to_string_lossy()));
-    // Create TS context and generate tags from the source code
-    let mut context = TagsContext::new();
-    let tags = context.generate_tags(&conf, &code, None).unwrap().0;
-
-    let mut res: Vec<Entry> = Vec::new();
-
-    for tag in tags {
-        let tag: tree_sitter_tags::Tag = tag.unwrap();
-        let entry: Entry = Entry {
-            file: path.to_string_lossy().to_string(),
-            name: std::str::from_utf8(&code[tag.name_range]).unwrap_or("").to_string(),
-            is_definition: tag.is_definition,
-            syntax_type_id: tag.syntax_type_id,
-            row: tag.span.start.row + 1,
-            column: tag.span.start.column + 1,
-        };
-        res.push(entry);
-    };
-
-    return res;
-}
-
-fn scan(sw: Sender<globwalk::DirEntry>,
-        rr: Receiver<Vec<Entry>>,
-        path: &str)
-            -> Result<Vec<Entry>, globwalk::GlobError> {
-    let walker = globwalk::GlobWalkerBuilder::from_patterns(
-        path,
-        &PATTERNS,
-    )
-    .follow_links(true)
-    .case_insensitive(true)
-    .build()?
-    .into_iter()
-    .filter_map(Result::ok);
-
-    let mut count = 0;
-    let mut res: Vec<Entry> = Vec::new();
-
-    // For each file found, ...
-    for file in walker {
-        if !file.file_type().is_file() {
-            continue;
-        }
-        // Send the file to tokenizer.
-        match sw.send(file) {
-            Ok(_) => count += 1,
-            Err(e) => println!("Error: {}", e)
-        };
-        for tags in rr.try_iter() {
-            count -= 1;
-            res.extend(tags);
-        }
-    }
-
-    // Pickup and wait for all the remaining results.
-    for tags in rr.iter() {
-        count -= 1;
-        res.extend(tags);
-        if count == 0 {
-            break;
-        };
-    }
-
-    return Ok(res);
-}
-
 fn get_tags_configuration(confs : &mut HashMap<String, Rc<RefCell<TagsConfiguration>>>, ext : String) -> Rc<RefCell<TagsConfiguration>> {
     // Is there already existing configuration for given extension?
     match confs.get(&ext) {
@@ -207,21 +134,43 @@ fn get_tags_configuration(confs : &mut HashMap<String, Rc<RefCell<TagsConfigurat
     }
 }
 
-// Tokenizer needs a channel to receive commands to workers
-// and a channel to send results from workers
-fn tokenizer(rw: Receiver<globwalk::DirEntry>, sr: Sender<Vec<Entry>>) {
-    let mut confs : HashMap<String, Rc<RefCell<TagsConfiguration>>> = HashMap::new();
+fn tokenize(path: &std::path::Path, conf: &TagsConfiguration) -> Vec<Entry> {
+    // Read source code to tokenize
+    let code = std::fs::read(path).expect(&format!("Failed to read file ({})", path.to_string_lossy()));
+    // Create TS context and generate tags from the source code
+    let mut context = TagsContext::new();
+    let tags = context.generate_tags(&conf, &code, None).unwrap().0;
 
-    for dir_entry in rw.iter() {
+    let mut results: Vec<Entry> = Vec::new();
+    for tag in tags {
+        let tag: tree_sitter_tags::Tag = tag.unwrap();
+        let entry: Entry = Entry {
+            file: path.to_string_lossy().to_string(),
+            name: std::str::from_utf8(&code[tag.name_range]).unwrap_or("").to_string(),
+            is_definition: tag.is_definition,
+            syntax_type_id: tag.syntax_type_id,
+            row: tag.span.start.row + 1,
+            column: tag.span.start.column + 1,
+        };
+        results.push(entry);
+    };
+    results
+}
+
+fn tokenize_chunk(dir_entries: &[globwalk::DirEntry]) -> Vec<Entry> {
+    let mut confs : HashMap<String, Rc<RefCell<TagsConfiguration>>> = HashMap::new();
+    let mut results : Vec<Entry> = Vec::new();
+
+    for dir_entry in dir_entries {
         let ext = dir_entry
             .path()
             .extension()
             .and_then(std::ffi::OsStr::to_str)
             .expect(&format!("Failed to get extension of file ({})", dir_entry.path().to_string_lossy()));
         let conf = get_tags_configuration(&mut confs, ext.to_string());
-        let res = tokenize(&dir_entry.path(), &*conf.borrow());
-        sr.send(res).expect("Failed to send message with results to control thread");
+        results.extend(tokenize(&dir_entry.path(), &*conf.borrow()));
     }
+    results
 }
 
 fn save_chunk_to_db(index: usize, tags: &[Entry]) {
@@ -318,26 +267,35 @@ fn compute_chunk_size(size: usize, chunks: usize) -> usize {
 }
 
 pub fn ttags_create(path: &str) {
-    // Channel for giving commands to workers
-    let (sw, rw) = bounded(num_cpus::get() * 10);
-    // Channel for reporting results from workers
-    let (sr, rr) = unbounded();
+    let walker = globwalk::GlobWalkerBuilder::from_patterns(path, &PATTERNS)
+        .follow_links(true)
+        .case_insensitive(true)
+        .build().expect("Failed to create a filesystem walker");
 
-    for _ in 0..cmp::max(1, num_cpus::get() - 1) {
-        let rw = rw.clone();
-        let sr = sr.clone();
-        thread::spawn(move || {
-            tokenizer(rw, sr);
-        });
-    };
+    let files: Vec<_> = walker
+        .filter_map(|result_with_dir_entry| {
+            result_with_dir_entry
+                .ok()
+                .and_then(|dir_entry| {
+                    if dir_entry.file_type().is_file() {
+                        Some(dir_entry)
+                    } else {
+                        None
+                    }
+                })
+        })
+        .collect();
 
-    // Scanner needs to be able to give commands to workers (sw)
-    // and to retrieve results from workers (rr)
-    let res = scan(sw, rr, path).expect("Error when scanning and parsing files");
+    let results: Vec<_> = files
+        .par_chunks(cmp::max(1, num_cpus::get() - 1))
+        .flat_map(|chunk| tokenize_chunk(chunk))
+        .collect();
+
     // According to https://www.sqlite.org/limits.html the default
     // maximum number of attached databases in sqlite is 10.
-    res.par_chunks(compute_chunk_size(
-            res.len(), cmp::min(10, cmp::max(1, num_cpus::get() - 1))))
+    results
+        .par_chunks(compute_chunk_size(
+            results.len(), cmp::min(10, cmp::max(1, num_cpus::get() - 1))))
         .enumerate()
         .for_each(|(index, chunk)| { save_chunk_to_db(index, chunk); });
 }
