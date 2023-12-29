@@ -1,8 +1,5 @@
 #[cfg(test)]
 
-extern crate lib;
-use lib::module_ttags::*;
-
 mod tests {
 
 #[test]

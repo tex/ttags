@@ -36,7 +36,7 @@ fn test_tokenize_cpp() {
 
     let res = tokenize(
         std::path::Path::new(
-            &format!("{}/src/module_ttags/test.cpp", env!("CARGO_MANIFEST_DIR"))),
+            &format!("{}/tests/test.cpp", env!("CARGO_MANIFEST_DIR"))),
         &*conf.borrow());
 
     let q = |res : &Vec<Entry>, name, row, is_definition| {
@@ -60,8 +60,10 @@ fn test_tokenize_cpp() {
     qq(&res, "m_Variable_1", 8, DEF);
     qq(&res, "m_Struct_1", 9, DEF);
     qq(&res, "Work", 12, DEF);
-    // Local variables not wanted!
-    nq(&res, "local_1", 14, DEF);
+    // <del>Local variables not wanted!</del>
+    // Oh, this is needed as it catches other required
+    // tokens.
+    qq(&res, "local_1", 14, DEF);
 
     qq(&res, "m_Variable_1", 15, REF);
 
@@ -92,14 +94,14 @@ fn get_tags_configuration(confs : &mut HashMap<String, Rc<RefCell<TagsConfigurat
                 "rs" =>
                     (vec!["rs"], TagsConfiguration::new(
                         tree_sitter_rust::language(),
-                        &fs::read_to_string(format!("{}/src/module_ttags/tags_rust.scm", env!("CARGO_MANIFEST_DIR")))
+                        &fs::read_to_string(format!("{}/src/scm/tags_rust.scm", env!("CARGO_MANIFEST_DIR")))
                             .expect("Can't read tags_rust.scm"),
                         "")),
                 // Oh yes, lots of c++ source code is in c file...
                 "cc"|"hh"|"cpp"|"hpp"|"ipp"|"h"|"c" =>
                     (vec!["cc","hh","cpp","hpp","ipp", "h","c"], TagsConfiguration::new(
                         tree_sitter_cpp::language(),
-                        &fs::read_to_string(format!("{}/src/module_ttags/tags_cpp.scm", env!("CARGO_MANIFEST_DIR")))
+                        &fs::read_to_string(format!("{}/src/scm/tags_cpp.scm", env!("CARGO_MANIFEST_DIR")))
                             .expect("Can't read tags_cpp.scm"),
                         "")),
                 "js" =>

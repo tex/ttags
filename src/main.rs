@@ -1,6 +1,4 @@
-extern crate lib;
-
-use lib::module_ttags::*;
+use ttags::*;
 use clap::Parser;
 
 /// By default a tag database is created for current folder recursively
