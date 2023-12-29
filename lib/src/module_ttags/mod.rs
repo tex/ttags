@@ -289,7 +289,8 @@ pub fn ttags_create(path: &str) {
         .collect();
 
     let results: Vec<_> = files
-        .par_chunks(cmp::max(1, num_cpus::get() - 1))
+        .par_chunks(compute_chunk_size(
+            files.len(), cmp::max(1, num_cpus::get() - 1)))
         .flat_map(|chunk| tokenize_chunk(chunk))
         .collect();
 
