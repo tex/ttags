@@ -60,10 +60,16 @@
 
 ;; Constants... oh, no way to know if it is local or global...
 ;; probably better to have it than not have it.
+
 ;; const uint8_t MY_CONSTANT = 20;
 (declaration
   (init_declarator
       declarator: (identifier) @name)) @definition.identifier
+;; const char MY_ARRAY[] = "Hello";
+(declaration
+  (init_declarator
+    (array_declarator
+      declarator: (identifier) @name))) @definition.identifier
 
 ;; References
 

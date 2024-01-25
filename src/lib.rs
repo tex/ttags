@@ -78,6 +78,8 @@ fn test_tokenize_cpp() {
 
     nq(&res, "myStruct", 20, REF);
     qq(&res, "Todo", 20, REF);
+
+    qq(&res, "GLOBAL_ARRAY", 23, DEF);
 }
 
 fn get_tags_configuration(confs : &mut HashMap<String, Rc<RefCell<TagsConfiguration>>>, ext : String) -> Rc<RefCell<TagsConfiguration>> {

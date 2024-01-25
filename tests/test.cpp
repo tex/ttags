@@ -20,3 +20,5 @@ Class_1::Work()
   myStruct.Todo();
 }
 
+char GLOBAL_ARRAY[] = "Hello";
+
