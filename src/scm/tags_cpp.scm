@@ -70,6 +70,18 @@
   (init_declarator
     (array_declarator
       declarator: (identifier) @name))) @definition.identifier
+;; extern uint16_t Test
+(declaration
+  declarator: (identifier) @name) @definition.identifier
+;; extern SomeClass Test
+(declaration
+    (qualified_identifier
+      name: (identifier) @name)) @definition.identifier
+;; extern SomeClass Test[Z]
+(declaration
+  (array_declarator
+    (qualified_identifier
+      name: (identifier) @name))) @definition.identifier
 
 ;; References
 
@@ -84,10 +96,44 @@
   (argument_list
     (identifier) @name)) @reference.identifier
 
+;; xyz(&TEST)
+(call_expression
+  (argument_list
+    (pointer_expression
+      (identifier) @name))) @reference.identifier
+
+;; &TEST[i]
+(pointer_expression
+  (subscript_expression
+    (identifier) @name)) @reference.identifier
+
 ;; XXX::Test()
 (call_expression
   (qualified_identifier
     name: (identifier) @name)) @reference.call
+
+;; XXX::YYY() : ZZZ(BBB:TEST) {}
+;; How to do proper recursion?
+(field_initializer
+  (argument_list
+    (qualified_identifier
+      name: (identifier) @name)) @reference.identifier)
+(field_initializer
+  (argument_list
+    (qualified_identifier
+      (qualified_identifier
+        name: (identifier) @name))) @reference.identifier)
+
+;; How to do proper recursion?
+(field_initializer
+  (argument_list
+    (qualified_identifier
+      scope: (namespace_identifier) @name)) @reference.identifier)
+(field_initializer
+  (argument_list
+    (qualified_identifier
+      (qualified_identifier
+        scope: (namespace_identifier) @name))) @reference.identifier)
 
 ;; m_Struct_1.XXX();
 ;;(call_expression
@@ -129,3 +175,13 @@
 
 (condition_clause
   value: (_) @name) @reference.identifier
+
+(cast_expression
+  (type_descriptor
+    type: (_) @name)) @reference.class
+
+;; X.test = Y
+(assignment_expression
+  (field_expression
+    field: (field_identifier) @name)) @reference.identifier
+

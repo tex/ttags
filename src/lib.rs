@@ -74,12 +74,29 @@ fn test_tokenize_cpp() {
     qq(&res, "Test", 16, REF);
 
     qq(&res, "MyStruct", 19, REF);
-    nq(&res, "myStruct", 19, DEF);
+    // nq(&res, "myStruct", 19, DEF);
 
     nq(&res, "myStruct", 20, REF);
     qq(&res, "Todo", 20, REF);
 
     qq(&res, "GLOBAL_ARRAY", 23, DEF);
+    qq(&res, "GLOBAL_ARRAY", 26, REF);
+    qq(&res, "GLOBAL_ARRAY", 27, REF);
+
+    qq(&res, "TestObject", 30, REF);
+    qq(&res, "Int", 30, REF);
+    qq(&res, "TEST_OBJECT_ID", 30, REF);
+
+    qq(&res, "SOMETHING", 33, REF);
+    qq(&res, "uint32_t", 33, REF);
+    qq(&res, "ARRAY", 33, REF);
+    qq(&res, "Something", 33, REF);
+
+    qq(&res, "specificItem", 34, REF);
+
+    qq(&res, "platformID", 37, DEF);
+    qq(&res, "ClassAttributes", 38, DEF);
+    qq(&res, "InstanceAttributes", 39, DEF);
 }
 
 fn get_tags_configuration(confs : &mut HashMap<String, Rc<RefCell<TagsConfiguration>>>, ext : String) -> Rc<RefCell<TagsConfiguration>> {

@@ -22,3 +22,18 @@ Class_1::Work()
 
 char GLOBAL_ARRAY[] = "Hello";
 
+void Something() {
+  MakeUse(&GLOBAL_ARRAY);
+  MakeUse(&GLOBAL_ARRAY[0]);
+}
+
+Test::Test() : TestBase(TestObject::Int::TEST_OBJECT_ID) {}
+
+void Something() {
+  SOMETHING((uint32_t *)&ARRAY[2], Something);
+  someAtributes[0].specificItem = someValue;
+}
+
+EXTERN uint16_t platformID;
+EXTERN CLASS_ATTRIBUTES     ClassAttributes;
+EXTERN INSTANCE_ATTRIBUTES  InstanceAttributes[NUM_INSTANCES];
