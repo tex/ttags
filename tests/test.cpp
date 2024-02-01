@@ -37,3 +37,16 @@ void Something() {
 EXTERN uint16_t platformID;
 EXTERN CLASS_ATTRIBUTES     ClassAttributes;
 EXTERN INSTANCE_ATTRIBUTES  InstanceAttributes[NUM_INSTANCES];
+
+void Something() {
+  switch (g_Global_1 || someFunction() || g_Global_2) {
+    case CONST_1:
+      break;
+    case CONST_2:
+      break;
+    case 54:
+      break;
+  }
+}
+
+

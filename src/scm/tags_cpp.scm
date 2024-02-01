@@ -185,3 +185,12 @@
   (field_expression
     field: (field_identifier) @name)) @reference.identifier
 
+;; case something:
+(case_statement
+  value: (identifier) @name) @reference.identifier
+
+(binary_expression
+  left: (identifier) @name) @reference.identifier
+(binary_expression
+  right: (identifier) @name) @reference.identifier
+

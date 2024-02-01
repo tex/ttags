@@ -97,6 +97,13 @@ fn test_tokenize_cpp() {
     qq(&res, "platformID", 37, DEF);
     qq(&res, "ClassAttributes", 38, DEF);
     qq(&res, "InstanceAttributes", 39, DEF);
+
+    qq(&res, "g_Global_1", 42, REF);
+    qq(&res, "g_Global_2", 42, REF);
+    qq(&res, "someFunction", 42, REF);
+    qq(&res, "CONST_1", 43, REF);
+    qq(&res, "CONST_2", 45, REF);
+
 }
 
 fn get_tags_configuration(confs : &mut HashMap<String, Rc<RefCell<TagsConfiguration>>>, ext : String) -> Rc<RefCell<TagsConfiguration>> {
@@ -273,6 +280,8 @@ fn compute_chunk_size_test()
     // X [7, 7, 7, 10]
 
     assert_eq!(compute_chunk_size(31, 4), 8);
+    
+    assert_eq!(compute_chunk_size(12, 16), 12);
 }
 
 // Chunks size as big as long as the remaining last chunk
@@ -280,13 +289,17 @@ fn compute_chunk_size_test()
 // Simple division 31/4 => 7 => 7 + 7 + 7 + 7 + 3
 // This function chooses 8 + 8 + 8 + 7
 fn compute_chunk_size(size: usize, chunks: usize) -> usize {
-    let mut chunk_size = size / (chunks - 1);
-    let mut last_chunk_size = size % (chunks - 1);
-    while last_chunk_size + 1 * (chunks - 1) < chunk_size {
-        last_chunk_size += 1 * (chunks - 1);
-        chunk_size -= 1;
+    if size < chunks {
+        size
+    } else {
+        let mut chunk_size = size / (chunks - 1);
+        let mut last_chunk_size = size % (chunks - 1);
+        while last_chunk_size + 1 * (chunks - 1) < chunk_size {
+            last_chunk_size += 1 * (chunks - 1);
+            chunk_size -= 1;
+        }
+        chunk_size
     }
-    chunk_size
 }
 
 pub fn ttags_create(path: &str) {
