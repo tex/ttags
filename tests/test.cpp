@@ -46,6 +46,8 @@ void Something() {
       break;
     case 54:
       break;
+    case MyNameSpace::MyClass::CONST:
+      break;
   }
 }
 

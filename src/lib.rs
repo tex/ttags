@@ -104,6 +104,7 @@ fn test_tokenize_cpp() {
     qq(&res, "CONST_1", 43, REF);
     qq(&res, "CONST_2", 45, REF);
 
+    qq(&res, "CONST", 49, REF);
 }
 
 fn get_tags_configuration(confs : &mut HashMap<String, Rc<RefCell<TagsConfiguration>>>, ext : String) -> Rc<RefCell<TagsConfiguration>> {
@@ -323,8 +324,7 @@ pub fn ttags_create(path: &str) {
         .collect();
 
     let results: Vec<_> = files
-        .par_chunks(compute_chunk_size(
-            files.len(), cmp::max(1, num_cpus::get() - 1)))
+        .par_chunks(32)
         .flat_map(|chunk| tokenize_chunk(chunk))
         .collect();
 
