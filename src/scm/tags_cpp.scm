@@ -188,6 +188,9 @@
 ;; case something:
 (case_statement
   value: (identifier) @name) @reference.identifier
+(case_statement
+  value: (qualified_identifier) @name) @reference.qualified_identifier
+
 
 (binary_expression
   left: (identifier) @name) @reference.identifier

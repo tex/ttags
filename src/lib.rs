@@ -3,8 +3,7 @@ use std::collections::HashMap;
 use tree_sitter_tags::TagsContext;
 use tree_sitter_tags::TagsConfiguration;
 
-extern crate rayon;
-use rayon::prelude::*;
+use easy_parallel::Parallel;
 
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -175,6 +174,7 @@ fn tokenize(path: &std::path::Path, conf: &TagsConfiguration) -> Vec<Entry> {
     let mut results: Vec<Entry> = Vec::new();
     for tag in tags {
         let tag: tree_sitter_tags::Tag = tag.unwrap();
+        // println!("{}", conf.syntax_type_name(tag.syntax_type_id));
         let entry: Entry = Entry {
             file: path.to_string_lossy().to_string(),
             name: std::str::from_utf8(&code[tag.name_range]).unwrap_or("").to_string(),
@@ -188,36 +188,7 @@ fn tokenize(path: &std::path::Path, conf: &TagsConfiguration) -> Vec<Entry> {
     results
 }
 
-fn tokenize_chunk(dir_entries: &[globwalk::DirEntry]) -> Vec<Entry> {
-    let mut confs : HashMap<String, Rc<RefCell<TagsConfiguration>>> = HashMap::new();
-    let mut results : Vec<Entry> = Vec::new();
-
-    for dir_entry in dir_entries {
-        let ext = dir_entry
-            .path()
-            .extension()
-            .and_then(std::ffi::OsStr::to_str)
-            .expect(&format!("Failed to get extension of file ({})", dir_entry.path().to_string_lossy()));
-        let conf = get_tags_configuration(&mut confs, ext.to_string());
-        results.extend(tokenize(&dir_entry.path(), &*conf.borrow()));
-    }
-    results
-}
-
-fn save_chunk_to_db(index: usize, tags: &[Entry]) {
-    let name = format!(".ttags.{}.db", index);
-    let mut conn = rusqlite::Connection::open(name.clone()).expect(&format!("Error when opening database {}", name));
-    prepare_db(&mut conn).expect(&format!("Error when preparing database {}", name));
-    save_tags_to_db(tags, &mut conn).expect(&format!("Error when inserting tags to database {}", name));
-}
-
 fn save_tags_to_db(tags: &[Entry], conn: &mut rusqlite::Connection) -> Result<(), rusqlite::Error> {
-    // Dropping indexes before pushing lot of data to a new, empty
-    // table and creating the indexes after all insertions are done
-    // is supposedly faster.
-    conn.execute("DROP INDEX IF EXISTS id", [])?;
-    conn.execute("DROP INDEX IF EXISTS idx_tags", [])?;
-
     const CHUNKS: usize = 50;
     let mut st = format!("INSERT INTO tags VALUES{}", " (NULL, ?, ?, ?, ?, ?, ?),".repeat(CHUNKS));
     st.pop(); // pop the last character: ','
@@ -240,10 +211,6 @@ fn save_tags_to_db(tags: &[Entry], conn: &mut rusqlite::Connection) -> Result<()
         }
         stm.execute(&*param_values).unwrap();
     }
-
-    conn.execute("CREATE INDEX IF NOT EXISTS id ON tags(id)", [])?;
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_tags ON tags(name, is_definition)", [])?;
-
     Ok(())
 }
 
@@ -268,72 +235,91 @@ fn prepare_db(conn: &mut rusqlite::Connection) -> Result<(), rusqlite::Error> {
          )",
         [],
     )?;
+    // Dropping indexes before pushing lot of data to a new, empty
+    // table and creating the indexes after all insertions are done
+    // is supposedly faster.
+    conn.execute("DROP INDEX IF EXISTS id", [])?;
+    conn.execute("DROP INDEX IF EXISTS idx_tags", [])?;
 
     Ok(())
 }
+use std::sync::atomic::{AtomicU32, Ordering};
 
-#[test]
-fn compute_chunk_size_test()
-{
-    // O [10, 10, 10, 1]
-    // O [9, 9, 9, 4]
-    // O [8, 8, 8, 7]
-    // X [7, 7, 7, 10]
-
-    assert_eq!(compute_chunk_size(31, 4), 8);
-    
-    assert_eq!(compute_chunk_size(12, 16), 12);
-}
-
-// Chunks size as big as long as the remaining last chunk
-// is as big as possible but not bigger than previous chunks size.
-// Simple division 31/4 => 7 => 7 + 7 + 7 + 7 + 3
-// This function chooses 8 + 8 + 8 + 7
-fn compute_chunk_size(size: usize, chunks: usize) -> usize {
-    if size < chunks {
-        size
-    } else {
-        let mut chunk_size = size / (chunks - 1);
-        let mut last_chunk_size = size % (chunks - 1);
-        while last_chunk_size + 1 * (chunks - 1) < chunk_size {
-            last_chunk_size += 1 * (chunks - 1);
-            chunk_size -= 1;
-        }
-        chunk_size
-    }
-}
 
 pub fn ttags_create(path: &str) {
     let walker = globwalk::GlobWalkerBuilder::from_patterns(path, &PATTERNS)
         .follow_links(true)
         .case_insensitive(true)
-        .build().expect("Failed to create a filesystem walker");
+        .build()
+        .expect("Failed to create a filesystem walker");
 
-    let files: Vec<_> = walker
-        .filter_map(|result_with_dir_entry| {
-            result_with_dir_entry
-                .ok()
-                .and_then(|dir_entry| {
-                    if dir_entry.file_type().is_file() {
-                        Some(dir_entry)
-                    } else {
-                        None
+    let (tx_dir_entry, rx_dir_entry) = flume::unbounded::<globwalk::DirEntry>();
+    let (tx_file_tokens, rx_file_tokens) = flume::unbounded::<Vec<Entry>>();
+
+    let atomic = AtomicU32::new(0);
+    let para = Parallel::new()
+        .each(0..num_cpus::get(), |_| {
+            let mut confs : HashMap<String, Rc<RefCell<TagsConfiguration>>> = HashMap::new();
+            let mut count = 0;
+            let mut buffer : Vec<Entry> = Vec::new();
+            for dir_entry in rx_dir_entry.iter() {
+                let ext = dir_entry
+                    .path()
+                    .extension()
+                    .and_then(std::ffi::OsStr::to_str)
+                    .expect(&format!("Failed to get extension of file ({})", dir_entry.path().to_string_lossy()));
+                let conf = get_tags_configuration(&mut confs, ext.to_string());
+                let file_tokens = tokenize(&dir_entry.path(), &*conf.borrow());
+                buffer.extend(file_tokens);
+                if buffer.len() > 10000 {
+                    let orig = atomic.fetch_add(1, Ordering::Relaxed);
+                    count += 1;
+                    if count == 1 {
+                        count = 0;
+                        println!("+{}", orig);
                     }
-                })
+                    tx_file_tokens.send(buffer).unwrap();
+                    buffer = Vec::new();
+                }
+            }
+            let orig = atomic.fetch_add(1, Ordering::Relaxed);
+            count += 1;
+            if count == 1 {
+                println!("+{}", orig);
+            }
+            tx_file_tokens.send(buffer).unwrap();
+            drop(tx_file_tokens);
         })
-        .collect();
+        // According to https://www.sqlite.org/limits.html the default
+        // maximum number of attached databases in sqlite is 10.
+        .each(0..cmp::min(10, cmp::max(1, num_cpus::get() - 1)), |i| {
+            let name = format!(".ttags.{}.db", i);
+            let mut conn = rusqlite::Connection::open(name.clone()).expect(&format!("Error when opening database {}", name));
+            prepare_db(&mut conn).expect(&format!("Error when preparing database {}", name));
+            let mut count = 0;
+            for file_tokens in rx_file_tokens.iter() {
+                let orig = atomic.fetch_sub(1, Ordering::Relaxed);
+                count += 1;
+                if count == 1 {
+                    count = 0;
+                    println!("-{}", orig);
+                }
+                save_tags_to_db(&file_tokens, &mut conn)
+                    .expect(&format!("Error when inserting tags to database {}", name));
+            }
+            conn.execute("CREATE INDEX IF NOT EXISTS id ON tags(id)", [])
+                .expect(&format!("Error when preparing database {}", name));
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_tags ON tags(name, is_definition)", [])
+                .expect(&format!("Error when preparing database {}", name));
+        });
 
-    let results: Vec<_> = files
-        .par_chunks(32)
-        .flat_map(|chunk| tokenize_chunk(chunk))
-        .collect();
+    walker.for_each(|result_with_dir_entry| {
+        let dir_entry = result_with_dir_entry.unwrap();
+        if dir_entry.file_type().is_file() {
+            tx_dir_entry.send(dir_entry).unwrap();
+        }
+    });
+    drop(tx_dir_entry);
 
-    // According to https://www.sqlite.org/limits.html the default
-    // maximum number of attached databases in sqlite is 10.
-    results
-        .par_chunks(compute_chunk_size(
-            results.len(), cmp::min(10, cmp::max(1, num_cpus::get() - 1))))
-        .enumerate()
-        .for_each(|(index, chunk)| save_chunk_to_db(index, chunk) );
+    para.run();
 }
-
