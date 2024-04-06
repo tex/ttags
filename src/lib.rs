@@ -189,7 +189,7 @@ fn tokenize(path: &std::path::Path, conf: &TagsConfiguration) -> Vec<Entry> {
 }
 
 fn save_tags_to_db(tags: &[Entry], conn: &mut rusqlite::Connection) -> Result<(), rusqlite::Error> {
-    const CHUNKS: usize = 50;
+    const CHUNKS: usize = 500;
     let mut st = format!("INSERT INTO tags VALUES{}", " (NULL, ?, ?, ?, ?, ?, ?),".repeat(CHUNKS));
     st.pop(); // pop the last character: ','
 
@@ -237,14 +237,12 @@ fn prepare_db(conn: &mut rusqlite::Connection) -> Result<(), rusqlite::Error> {
     )?;
     // Dropping indexes before pushing lot of data to a new, empty
     // table and creating the indexes after all insertions are done
-    // is supposedly faster.
+    // is much faster.
     conn.execute("DROP INDEX IF EXISTS id", [])?;
     conn.execute("DROP INDEX IF EXISTS idx_tags", [])?;
 
     Ok(())
 }
-use std::sync::atomic::{AtomicU32, Ordering};
-
 
 pub fn ttags_create(path: &str) {
     let walker = globwalk::GlobWalkerBuilder::from_patterns(path, &PATTERNS)
@@ -256,11 +254,9 @@ pub fn ttags_create(path: &str) {
     let (tx_dir_entry, rx_dir_entry) = flume::unbounded::<globwalk::DirEntry>();
     let (tx_file_tokens, rx_file_tokens) = flume::unbounded::<Vec<Entry>>();
 
-    let atomic = AtomicU32::new(0);
     let para = Parallel::new()
         .each(0..num_cpus::get(), |_| {
             let mut confs : HashMap<String, Rc<RefCell<TagsConfiguration>>> = HashMap::new();
-            let mut count = 0;
             let mut buffer : Vec<Entry> = Vec::new();
             for dir_entry in rx_dir_entry.iter() {
                 let ext = dir_entry
@@ -272,20 +268,9 @@ pub fn ttags_create(path: &str) {
                 let file_tokens = tokenize(&dir_entry.path(), &*conf.borrow());
                 buffer.extend(file_tokens);
                 if buffer.len() > 10000 {
-                    let orig = atomic.fetch_add(1, Ordering::Relaxed);
-                    count += 1;
-                    if count == 1 {
-                        count = 0;
-                        println!("+{}", orig);
-                    }
                     tx_file_tokens.send(buffer).unwrap();
                     buffer = Vec::new();
                 }
-            }
-            let orig = atomic.fetch_add(1, Ordering::Relaxed);
-            count += 1;
-            if count == 1 {
-                println!("+{}", orig);
             }
             tx_file_tokens.send(buffer).unwrap();
             drop(tx_file_tokens);
@@ -296,14 +281,7 @@ pub fn ttags_create(path: &str) {
             let name = format!(".ttags.{}.db", i);
             let mut conn = rusqlite::Connection::open(name.clone()).expect(&format!("Error when opening database {}", name));
             prepare_db(&mut conn).expect(&format!("Error when preparing database {}", name));
-            let mut count = 0;
             for file_tokens in rx_file_tokens.iter() {
-                let orig = atomic.fetch_sub(1, Ordering::Relaxed);
-                count += 1;
-                if count == 1 {
-                    count = 0;
-                    println!("-{}", orig);
-                }
                 save_tags_to_db(&file_tokens, &mut conn)
                     .expect(&format!("Error when inserting tags to database {}", name));
             }
