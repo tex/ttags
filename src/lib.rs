@@ -254,7 +254,7 @@ pub fn ttags_create(path: &str) {
     let (tx_dir_entry, rx_dir_entry) = flume::unbounded::<globwalk::DirEntry>();
     let (tx_file_tokens, rx_file_tokens) = flume::unbounded::<Vec<Entry>>();
 
-    let para = Parallel::new()
+    Parallel::new()
         .each(0..num_cpus::get(), |_| {
             let mut confs : HashMap<String, Rc<RefCell<TagsConfiguration>>> = HashMap::new();
             let mut buffer : Vec<Entry> = Vec::new();
@@ -289,15 +289,15 @@ pub fn ttags_create(path: &str) {
                 .expect(&format!("Error when preparing database {}", name));
             conn.execute("CREATE INDEX IF NOT EXISTS idx_tags ON tags(name, is_definition)", [])
                 .expect(&format!("Error when preparing database {}", name));
-        });
-
-    walker.for_each(|result_with_dir_entry| {
-        let dir_entry = result_with_dir_entry.unwrap();
-        if dir_entry.file_type().is_file() {
-            tx_dir_entry.send(dir_entry).unwrap();
-        }
-    });
-    drop(tx_dir_entry);
-
-    para.run();
+        })
+        .add(|| {
+            walker.for_each(|result_with_dir_entry| {
+                let dir_entry = result_with_dir_entry.unwrap();
+                if dir_entry.file_type().is_file() {
+                    tx_dir_entry.send(dir_entry).unwrap();
+                }
+            });
+            drop(tx_dir_entry);
+        })
+        .run();
 }
