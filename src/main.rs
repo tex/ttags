@@ -23,15 +23,15 @@ struct Cli {
 }
 
 pub fn ttags_complete(conn: &mut rusqlite::Connection, symbol: &str) -> Result<(), rusqlite::Error> {
-    let mut query = "SELECT DISTINCT name FROM db0.tags WHERE is_definition=true AND name GLOB ?1".to_string();
+    let mut query = "SELECT DISTINCT name FROM db0.tags WHERE is_definition=true AND name LIKE ?1".to_string();
     for_each_db(|_path, index| {
         if index != 0 {
             query.push_str(
-                &format!(" UNION ALL SELECT DISTINCT name FROM db{}.tags WHERE is_definition=true AND name GLOB ?1", index));
+                &format!(" UNION SELECT DISTINCT name FROM db{}.tags WHERE is_definition=true AND name LIKE ?1", index));
         }
     });
     let mut stmt = conn.prepare(&query)?;
-    let mut rows = stmt.query(rusqlite::params![symbol])?;
+    let mut rows = stmt.query(rusqlite::params![format!("{}%", symbol)])?;
     while let Some(row) = rows.next()? {
         println!("{}",
             row.get::<_, String>(0)?);  // name
