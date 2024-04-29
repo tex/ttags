@@ -1,7 +1,9 @@
 ;; This is from tree-sitter-cpp/queries/tags.scm
 
 (struct_specifier
-  name: (type_identifier) @name body:(_)) @definition.class
+  name: (type_identifier) @name
+  body: (_)
+) @definition.class
 
 (declaration
   type: (union_specifier
@@ -25,7 +27,9 @@
   name: (type_identifier) @name) @definition.type
 
 (class_specifier
-  name: (type_identifier) @name) @definition.class
+  name: (type_identifier) @name
+  body: (_)
+) @definition.class
 
 ;; ---
 
