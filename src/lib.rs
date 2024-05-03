@@ -1,10 +1,4 @@
-#[cfg(test)]
-#[path = "./lib_test.rs"]
-mod lib_test;
-
 use easy_parallel::Parallel;
-use std::cell::RefCell;
-use std::cmp;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -15,7 +9,7 @@ use tree_sitter_tags::TagsContext;
 const PATTERNS: [&str; 10] = [ "*.rs", "*.cpp", "*.hpp", "*.ipp", "*.cc", "*.hh", "*.c", "*.h", "*.py", "*.js" ];
 
 #[derive(Debug)]
-struct Entry {
+struct TagEntry {
     file: String,
     name: String,
     is_definition: bool,
@@ -24,7 +18,7 @@ struct Entry {
     column: usize,
 }
 
-fn get_tags_configuration(confs : &mut HashMap<String, Rc<RefCell<TagsConfiguration>>>, ext : String) -> Rc<RefCell<TagsConfiguration>> {
+fn get_tags_configuration(confs : &mut HashMap<String, Rc<TagsConfiguration>>, ext : String) -> Rc<TagsConfiguration> {
     // Is there already existing configuration for given extension?
     match confs.get(&ext) {
         // Yes, there is some configuration...
@@ -65,7 +59,7 @@ fn get_tags_configuration(confs : &mut HashMap<String, Rc<RefCell<TagsConfigurat
 
             return match conf {
                 (exts, Ok(conf)) => {
-                    let val = Rc::new(RefCell::new(conf));
+                    let val = Rc::new(conf);
                     for ext in exts {
                         confs.insert(ext.to_string(), val.clone());
                     }
@@ -80,7 +74,7 @@ fn get_tags_configuration(confs : &mut HashMap<String, Rc<RefCell<TagsConfigurat
     }
 }
 
-fn tokenize(path: &std::path::Path, conf: &TagsConfiguration) -> Vec<Entry> {
+fn tokenize(path: &std::path::Path, conf: &TagsConfiguration) -> Vec<TagEntry> {
     // Read source code to tokenize
     let code = std::fs::read(path)
         .map_err(|err| println!("Failed to read file ({}), error ({})", path.to_string_lossy(), err))
@@ -89,11 +83,11 @@ fn tokenize(path: &std::path::Path, conf: &TagsConfiguration) -> Vec<Entry> {
     let mut context = TagsContext::new();
     let tags = context.generate_tags(&conf, &code, None).unwrap().0;
 
-    let mut results: Vec<Entry> = Vec::new();
+    let mut results: Vec<TagEntry> = Vec::new();
     for tag in tags {
         let tag: tree_sitter_tags::Tag = tag.unwrap();
         // println!("{}", conf.syntax_type_name(tag.syntax_type_id));
-        let entry: Entry = Entry {
+        let tag: TagEntry = TagEntry {
             file: path.to_string_lossy().to_string(),
             name: std::str::from_utf8(&code[tag.name_range]).unwrap_or("").to_string(),
             is_definition: tag.is_definition,
@@ -101,12 +95,12 @@ fn tokenize(path: &std::path::Path, conf: &TagsConfiguration) -> Vec<Entry> {
             row: tag.span.start.row + 1,
             column: tag.span.start.column + 1,
         };
-        results.push(entry);
+        results.push(tag);
     };
     results
 }
 
-fn save_tags_to_db(tags: &[Entry], conn: &mut rusqlite::Connection) -> Result<(), rusqlite::Error> {
+fn save_tags_to_db(tags: &[TagEntry], conn: &mut rusqlite::Connection) -> Result<(), rusqlite::Error> {
     const CHUNKS: usize = 500;
     let mut st = format!("INSERT INTO tags VALUES{}", " (NULL, ?, ?, ?, ?, ?, ?),".repeat(CHUNKS));
     st.pop(); // pop the last character: ','
@@ -170,12 +164,12 @@ pub fn ttags_create(path: &str) {
         .expect("Failed to create a filesystem walker");
 
     let (tx_dir_entry, rx_dir_entry) = flume::unbounded::<globwalk::DirEntry>();
-    let (tx_file_tokens, rx_file_tokens) = flume::unbounded::<Vec<Entry>>();
+    let (tx_file_tokens, rx_file_tokens) = flume::unbounded::<Vec<TagEntry>>();
 
     Parallel::new()
         .each(0..num_cpus::get(), |_| {
-            let mut confs : HashMap<String, Rc<RefCell<TagsConfiguration>>> = HashMap::new();
-            let mut buffer : Vec<Entry> = Vec::new();
+            let mut confs : HashMap<String, Rc<TagsConfiguration>> = HashMap::new();
+            let mut buffer : Vec<TagEntry> = Vec::new();
             for dir_entry in rx_dir_entry.iter() {
                 let ext = dir_entry
                     .path()
@@ -183,7 +177,7 @@ pub fn ttags_create(path: &str) {
                     .and_then(std::ffi::OsStr::to_str)
                     .expect(&format!("Failed to get extension of file ({})", dir_entry.path().to_string_lossy()));
                 let conf = get_tags_configuration(&mut confs, ext.to_string());
-                let file_tokens = tokenize(&dir_entry.path(), &*conf.borrow());
+                let file_tokens = tokenize(&dir_entry.path(), &conf);
                 buffer.extend(file_tokens);
                 if buffer.len() > 10000 {
                     tx_file_tokens.send(buffer).unwrap();
@@ -193,9 +187,7 @@ pub fn ttags_create(path: &str) {
             tx_file_tokens.send(buffer).unwrap();
             drop(tx_file_tokens);
         })
-        // According to https://www.sqlite.org/limits.html the default
-        // maximum number of attached databases in sqlite is 10.
-        .each(0..cmp::min(10, cmp::max(1, num_cpus::get() - 1)), |i| {
+        .each(0..num_cpus::get(), |i| {
             let name = format!(".ttags.{}.db", i);
             let mut conn = rusqlite::Connection::open(name.clone()).expect(&format!("Error when opening database {}", name));
             prepare_db(&mut conn).expect(&format!("Error when preparing database {}", name));
@@ -219,3 +211,6 @@ pub fn ttags_create(path: &str) {
         })
         .run();
 }
+
+#[cfg(test)]
+mod lib_test;
