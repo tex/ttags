@@ -1,6 +1,7 @@
 use ttags::*;
 use clap::Parser;
 use easy_parallel::Parallel;
+use std::collections::HashSet;
 
 /// By default a tag database is created for current folder recursively
 #[derive(Parser, Debug)]
@@ -24,6 +25,8 @@ struct Cli {
 }
 
 pub fn ttags_complete(symbol: &str) -> Result<(), rusqlite::Error> {
+    let (tx_symbol, rx_symbol) = flume::unbounded::<String>();
+
     Parallel::new()
         .each(globwalk::glob(".ttags.*.db").expect("Error when searching for .ttags.*.db files"), |db| {
             let query = "SELECT DISTINCT name FROM tags WHERE is_definition=true AND name LIKE ?1".to_string();
@@ -31,8 +34,17 @@ pub fn ttags_complete(symbol: &str) -> Result<(), rusqlite::Error> {
             let mut stmt = conn.prepare(&query).unwrap();
             let mut rows = stmt.query(rusqlite::params![format!("{}%", symbol)]).unwrap();
             while let Some(row) = rows.next().unwrap() {
-                println!("{}",
-                    row.get::<_, String>(0).unwrap());  // name
+                tx_symbol.send(row.get::<_, String>(0).unwrap()).unwrap();  // name
+            }
+            drop(tx_symbol);
+        })
+        .add(|| {
+            let mut symbols: HashSet<String> = HashSet::new();
+            for symbol in rx_symbol.iter() {
+                if !symbols.contains(&symbol) {
+                    symbols.insert(symbol.clone());
+                    println!("{}", symbol);
+                }
             }
         })
         .run();
