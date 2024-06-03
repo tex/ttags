@@ -1,10 +1,9 @@
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::env;
 use std::rc::Rc;
 use tree_sitter_tags::TagsConfiguration;
 
-use super::Entry;
+use super::TagEntry;
 use super::get_tags_configuration;
 use super::tokenize;
 
@@ -15,23 +14,23 @@ const REF: bool = false;
 
 #[test]
 fn test_tokenize_cpp() {
-    let mut confs : HashMap<String, Rc<RefCell<TagsConfiguration>>> = HashMap::new();
+    let mut confs : HashMap<String, Rc<TagsConfiguration>> = HashMap::new();
     let conf = get_tags_configuration(&mut confs, "cpp".to_string());
 
     let res = tokenize(
         std::path::Path::new(
             &format!("{}/tests/test.cpp", env!("CARGO_MANIFEST_DIR"))),
-        &*conf.borrow());
+        &*conf);
 
-    let q = |res : &Vec<Entry>, name, row, is_definition| {
+    let q = |res : &Vec<TagEntry>, name, row, is_definition| {
         res.iter().any(|entry|
             entry.name == name &&
             entry.is_definition == is_definition &&
             entry.row == row) };
 
-    let qq = |res : &Vec<Entry>, name, row, is_definition| {
+    let qq = |res : &Vec<TagEntry>, name, row, is_definition| {
         assert!(q(&res, name, row, is_definition), "{}, row: {}, {}, not found in {:?}", name, row, is_definition, res) };
-    let nq = |res : &Vec<Entry>, name, row, is_definition| {
+    let nq = |res : &Vec<TagEntry>, name, row, is_definition| {
         assert!(!q(&res, name, row, is_definition), "{}, row: {}, {}, found in {:?}", name, row, is_definition, res) };
 
     qq(&res, "Class_1", 1, DEF); // class
