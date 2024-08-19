@@ -4,23 +4,24 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-clap = { version = "3.2.22", features = ["derive"] }
-globwalk = "0.8.1"
-num_cpus = "1.15.0"
+clap = { version = "4.5.15", features = ["derive"] }
+globwalk = "0.9.1"
+num_cpus = "1.16.0"
 rusqlite = { version = "0.30.0", features = ["bundled"] }
-tree-sitter = "0.20.10"
-tree-sitter-tags = "0.20.2"
+tree-sitter = "0.22.6"
+tree-sitter-tags = "0.22.6"
 # tree-sitter-c = "0.20.2"
-tree-sitter-cpp = "0.20.3"
-tree-sitter-rust = "0.20.4"
-tree-sitter-python = "0.20.4"
-tree-sitter-javascript = "0.20.1"
+tree-sitter-cpp = "0.22.3"
+tree-sitter-rust = "0.21.2"
+tree-sitter-python = "0.21.0"
+tree-sitter-javascript = "0.21.4"
 
 easy-parallel = "3.3.1"
 flume = "0.11.0"
+magic = "0.16.2"
 
-[profile.release]
-panic = 'abort'
+#[profile.release]
+#panic = 'abort'
 
-[profile.dev]
-panic = 'abort'
+#[profile.dev]
+#panic = 'abort'

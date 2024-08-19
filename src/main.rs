@@ -79,7 +79,7 @@ fn main()  {
     } else if let Some(symbol) = cli.complete.as_deref() {
         ttags_complete(symbol).expect("Find completion failed");
     } else {
-        let path: &str = if let Some(p) = cli.complete.as_deref() { p } else { "." };
+        let path: &str = if let Some(p) = cli.path.as_deref() { p } else { "." };
         ttags_create(path);
     }
 }
