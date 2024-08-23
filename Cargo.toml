@@ -17,8 +17,11 @@ tree-sitter-python = "0.21.0"
 tree-sitter-javascript = "0.21.4"
 
 easy-parallel = "3.3.1"
-flume = "0.11.0"
+# flume = "0.11.0"
 magic = "0.16.2"
+crossbeam-channel = "0.5"
+crossbeam-utils = "0.8"
+#crossbeam = "0.8"
 
 #[profile.release]
 #panic = 'abort'

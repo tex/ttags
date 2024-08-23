@@ -24,6 +24,11 @@ struct TagEntry {
     column: usize,
 }
 
+struct TagFile {
+    name: [char; 512],
+}
+
+
 fn new_tags_configuration(ext : &String) -> Option<TagsConfiguration> {
     match ext.as_str() {
         "text/x-rs" => Some(TagsConfiguration::new(
@@ -144,29 +149,8 @@ fn prepare_db(conn: &mut rusqlite::Connection) -> Result<(), rusqlite::Error> {
     Ok(())
 }
 
-pub fn ttags_create(path: &str) {
-    let walker = globwalk::GlobWalkerBuilder::from_patterns(path, &PATTERNS)
-        .follow_links(true)
-        .case_insensitive(true)
-        .build()
-        .expect("Failed to create a filesystem walker");
+pub fn tokenize_thread(rx_dir_entry : crossbeam_channel::Receiver<globwalk::DirEntry>, tx_file_tokens : crossbeam_channel::Sender<Vec<TagEntry>>) {
 
-    let (tx_dir_entry, rx_dir_entry) = flume::unbounded::<globwalk::DirEntry>();
-    let (tx_file_tokens, rx_file_tokens) = flume::unbounded::<Vec<TagEntry>>();
-
-    walker.for_each(|result_with_dir_entry| {
-        let dir_entry = result_with_dir_entry.unwrap();
-        if dir_entry.file_type().is_file() {
-            tx_dir_entry.send(dir_entry).unwrap();
-            // Note that Relaxed ordering doesn't synchronize anything
-            // except the global counter itself.
-            let _ = GLOBAL_FILES_TOTAL_COUNT.fetch_add(1, Ordering::Relaxed);
-        }
-    });
-    drop(tx_dir_entry);
-
-    Parallel::new()
-        .each(0..num_cpus::get(), |_| {
             let mut confs : HashMap<String, Rc<TagsConfiguration>> = HashMap::new();
             let mut buffer : Vec<TagEntry> = Vec::with_capacity(10000);
 
@@ -204,22 +188,56 @@ pub fn ttags_create(path: &str) {
              }
             tx_file_tokens.send(buffer).unwrap();
             drop(tx_file_tokens);
-        })
-        .each(0..num_cpus::get(), |i| {
+}
+
+pub fn store_data_thread(rx_file_tokens : crossbeam_channel::Receiver<Vec<TagEntry>>, i : usize) {
             let name = format!(".ttags.{}.db", i);
             let mut conn = rusqlite::Connection::open(name.clone()).expect(&format!("Error when opening database {}", name));
             prepare_db(&mut conn).expect(&format!("Error when preparing database {}", name));
-            for file_tokens in rx_file_tokens.iter() {
+            let iter = rx_file_tokens.iter();
+            for file_tokens in iter {
+                let ft: Vec<TagEntry> = file_tokens;
                 print!("PROCESSED {:?} + IGNORED {:?} / TOTAL {:?}\r", GLOBAL_FILES_PROCESSED_COUNT, GLOBAL_FILES_SKIPPED_COUNT, GLOBAL_FILES_TOTAL_COUNT);
                 let _ = stdout().flush();
+                
                 //save_tags_to_db(&file_tokens, &mut conn)
                 //    .expect(&format!("Error when inserting tags to database {}", name));
-                drop(file_tokens)
             }
             conn.execute("CREATE INDEX IF NOT EXISTS id ON tags(id)", [])
                 .expect(&format!("Error when preparing database {}", name));
             conn.execute("CREATE INDEX IF NOT EXISTS idx_tags ON tags(name, is_definition)", [])
                 .expect(&format!("Error when preparing database {}", name));
+}
+
+pub fn ttags_create(path: &str) {
+    let walker = globwalk::GlobWalkerBuilder::from_patterns(path, &PATTERNS)
+        .follow_links(true)
+        .case_insensitive(true)
+        .build()
+        .expect("Failed to create a filesystem walker");
+
+    let (tx_dir_entry, rx_dir_entry) = crossbeam_channel::unbounded();
+    let (tx_file_tokens, rx_file_tokens) = crossbeam_channel::unbounded();
+
+    walker.for_each(|result_with_dir_entry| {
+        let dir_entry = result_with_dir_entry.unwrap();
+        if dir_entry.file_type().is_file() {
+            tx_dir_entry.send(dir_entry).unwrap();
+            // Note that Relaxed ordering doesn't synchronize anything
+            // except the global counter itself.
+            let _ = GLOBAL_FILES_TOTAL_COUNT.fetch_add(1, Ordering::Relaxed);
+        }
+    });
+    drop(tx_dir_entry);
+
+    let mut flf : Vec<(String, usize)> = Vec::new();
+
+    Parallel::new()
+        .each(0..num_cpus::get(), |_| {
+            tokenize_thread(rx_dir_entry, tx_file_tokens);
+        })
+        .each(0..num_cpus::get(), |i| {
+            store_data_thread(rx_file_tokens, i);
         })
         .run();
 }

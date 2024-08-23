@@ -25,7 +25,7 @@ struct Cli {
 }
 
 pub fn ttags_complete(symbol: &str) -> Result<(), rusqlite::Error> {
-    let (tx_symbol, rx_symbol) = flume::unbounded::<String>();
+    let (tx_symbol, rx_symbol) = crossbeam_channel::unbounded();
 
     Parallel::new()
         .each(globwalk::glob(".ttags.*.db").expect("Error when searching for .ttags.*.db files"), |db| {
