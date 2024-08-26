@@ -3,7 +3,6 @@ use clap::Parser;
 use easy_parallel::Parallel;
 use std::collections::HashSet;
 
-/// By default a tag database is created for current folder recursively
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Cli {
@@ -24,60 +23,15 @@ struct Cli {
     path: Option<String>,
 }
 
-pub fn ttags_complete(symbol: &str) -> Result<(), rusqlite::Error> {
-    let (tx_symbol, rx_symbol) = crossbeam_channel::unbounded();
-
-    Parallel::new()
-        .each(globwalk::glob(".ttags.*.db").expect("Error when searching for .ttags.*.db files"), |db| {
-            let query = "SELECT DISTINCT name FROM tags WHERE is_definition=true AND name LIKE ?1".to_string();
-            let conn = rusqlite::Connection::open(db.unwrap().path()).expect("Error opening in-memory database");
-            let mut stmt = conn.prepare(&query).unwrap();
-            let mut rows = stmt.query(rusqlite::params![format!("{}%", symbol)]).unwrap();
-            while let Some(row) = rows.next().unwrap() {
-                tx_symbol.send(row.get::<_, String>(0).unwrap()).unwrap();  // name
-            }
-            drop(tx_symbol);
-        })
-        .add(|| {
-            let mut symbols: HashSet<String> = HashSet::new();
-            for symbol in rx_symbol.iter() {
-                if !symbols.contains(&symbol) {
-                    symbols.insert(symbol.clone());
-                    println!("{}", symbol);
-                }
-            }
-        })
-        .run();
-    Ok(())
-}
-
-fn ttags_find(is_definition: bool, symbol: &str) -> Result<(), rusqlite::Error> {
-    Parallel::new()
-        .each(globwalk::glob(".ttags.*.db").expect("Error when searching for .ttags.*.db files"), |db| {
-            let query = "SELECT DISTINCT file,name,row FROM tags WHERE is_definition=?1 AND name GLOB ?2".to_string();
-            let conn = rusqlite::Connection::open(db.unwrap().path()).expect("Error opening in-memory database");
-            let mut stmt = conn.prepare(&query).unwrap();
-            let mut rows = stmt.query(rusqlite::params![is_definition, symbol]).unwrap();
-            while let Some(row) = rows.next().unwrap() {
-                println!("{}:{}:{}",
-                    row.get::<_, String>(0).unwrap(),   // file
-                    row.get::<_, usize>(2).unwrap(),    // row
-                    row.get::<_, String>(1).unwrap());  // name
-            }
-        })
-        .run();
-    Ok(())
-}
-
 fn main()  {
     let cli = Cli::parse();
 
     if let Some(symbol) = cli.reference.as_deref() {
-        ttags_find(false, symbol).expect("Find reference failed");
+        ttags_find(false, symbol);
     } else if let Some(symbol) = cli.definition.as_deref() {
-        ttags_find(true, symbol).expect("Find definition failed");
+        ttags_find(true, symbol);
     } else if let Some(symbol) = cli.complete.as_deref() {
-        ttags_complete(symbol).expect("Find completion failed");
+        ttags_complete(symbol);
     } else {
         let path: &str = if let Some(p) = cli.path.as_deref() { p } else { "." };
         ttags_create(path);
