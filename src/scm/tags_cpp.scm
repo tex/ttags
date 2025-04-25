@@ -17,8 +17,7 @@
 
 (function_declarator
   declarator: (qualified_identifier
-                scope: (namespace_identifier) @local.scope
-                name: (identifier) @name)) @definition.method
+                name: (identifier) @name)) @definition.function
 
 (type_definition 
   declarator: (type_identifier) @name) @definition.type
@@ -88,6 +87,9 @@
       name: (identifier) @name))) @definition.identifier
 
 ;; References
+
+(qualified_identifier
+  name: (type_identifier) @name) @reference.identifier
 
 ;;(call_expression
 ;;  function: (qualified_identifier) @name) @reference.call
@@ -201,3 +203,6 @@
 (binary_expression
   right: (identifier) @name) @reference.identifier
 
+;; XYZ_TYPE FunctionName(something) { ... }
+(function_definition
+  type: (type_identifier) @name) @reference.identifier
