@@ -206,3 +206,7 @@
 ;; XYZ_TYPE FunctionName(something) { ... }
 (function_definition
   type: (type_identifier) @name) @reference.identifier
+
+(new_expression
+  type: (type_identifier) @name) @reference.identifier
+
