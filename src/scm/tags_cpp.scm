@@ -68,6 +68,11 @@
 (declaration
   (init_declarator
       declarator: (identifier) @name)) @definition.identifier
+(declaration
+  (init_declarator
+      (qualified_identifier
+        name: (identifier) @name))) @definition.identifier
+
 ;; const char MY_ARRAY[] = "Hello";
 (declaration
   (init_declarator
