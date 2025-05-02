@@ -208,7 +208,21 @@
            (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name)))))
            (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name))))))
            ]) @doc
-]) @reference.case_statement
+]) @reference.case_statement.identifier
+
+(case_statement [
+  value: (identifier) @name
+  value: (qualified_identifier [
+           (namespace_identifier) @name
+           (qualified_identifier (namespace_identifier) @name)
+           (qualified_identifier (qualified_identifier (namespace_identifier) @name))
+           (qualified_identifier (qualified_identifier (qualified_identifier (namespace_identifier) @name)))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (namespace_identifier) @name))))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (namespace_identifier) @name)))))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (namespace_identifier) @name))))))
+           ]) @doc
+]) @reference.case_statement.namespace_identifier
+
 
 (binary_expression
   left: (identifier) @name) @reference.r25
