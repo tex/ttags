@@ -125,7 +125,8 @@ fn tokenize(file: &String, file_index: usize, conf: &tree_sitter_tags::TagsConfi
     for tag in tags {
         let tag: tree_sitter_tags::Tag = tag.unwrap();
 
-        let name = std::str::from_utf8(&code[tag.name_range]).unwrap_or("").to_string();
+        let name = std::str::from_utf8(&code[tag.name_range.clone()]).unwrap_or("").to_string();
+        println!("file: {:?}, docs: {:?}, span: {:?}, type: {:?}, name: {:?}", file, tag.docs, tag.span, &conf.syntax_type_name(tag.syntax_type_id), name);
 
         tag_data.entry.push(
             TagEntry {
@@ -255,7 +256,79 @@ pub fn ttags_create(path: &str) {
 }
 
 pub fn ttags_complete(symbol: &str) {
+    let name: Vec<(String, usize)> = bincode::deserialize_from(
+        BufReader::new(File::open(".ttags.name.bin").expect("File not found")))
+        .expect("Deserialization failed");
+    // Step 1: Binary search to find the first potential match
+    let mut i = match name.binary_search_by(|t| {
+        // Compare the item value with the regex pattern
+        if *symbol == *t.0 {
+            std::cmp::Ordering::Equal
+        } else if *t.0 < *symbol {
+            std::cmp::Ordering::Less
+        } else {
+            std::cmp::Ordering::Greater
+        }
+    }) {
+        Ok(idx) => idx, // Exact match found
+        Err(idx) => idx, // No exact match, but this is where matches could start
+    };
+    let mut c = 0;
+    while i < name.len() && c < 10 {
 
+let name_entry_index = name.get(i).unwrap().1;
+
+        let file: Vec<TagFile> = bincode::deserialize_from(
+            BufReader::new(File::open(".ttags.file.bin").expect("File not found")))
+            .expect("Deserialization failed");
+        let name_entry: Vec<Vec<usize>> = bincode::deserialize_from(
+            BufReader::new(File::open(".ttags.name_entry.bin").expect("File not found")))
+            .expect("Deserialization failed");
+
+
+    let mut entry_file = File::open(".ttags.entry.bin").expect("File not found");
+    let entry_size: usize = bincode::serialized_size(&TagEntry::new()).unwrap() as usize;
+
+        for entry_index in &name_entry[name_entry_index] {
+    let offset = entry_size * entry_index;
+    entry_file.seek(SeekFrom::Start(offset as u64)).expect("File seek failed");
+
+    // Read the bytes for the struct
+    let mut buffer = vec![0u8; entry_size];
+    entry_file.read_exact(&mut buffer).expect("File read failed");
+
+    let mut confs : HashMap<String, Rc<tree_sitter_tags::TagsConfiguration>> = HashMap::new();
+    let flags = magic::cookie::Flags::MIME_TYPE;
+    let cookie = magic::Cookie::open(flags).expect("Failed to load magic");
+    let databases = [
+        format!("{}/magic/c-lang", env!("CARGO_MANIFEST_DIR")),
+    ].try_into().expect("Failed to load magic database");
+    let cookie = cookie.load(&databases).expect("Failed to load magic database");
+
+
+    // Deserialize the bytes into the struct
+    let entry: TagEntry = bincode::deserialize(&buffer).unwrap();
+
+                let file: &TagFile = &file[entry.file_index];
+
+
+        let ext = cookie.file(&file.path).expect("Error");
+        let conf = get_tags_configuration(&mut confs, &ext);
+        match conf {
+            Some(conf) => {
+                println!("{}:{}:{}:{}:{}",
+                    file.path, entry.row, name.get(i).unwrap().0, entry.is_definition, &conf.syntax_type_name(entry.syntax_type_id) /* should be line*/);
+            },
+            None => {
+                println!("{}:{}:{}:{}:{}",
+                    file.path, entry.row, name.get(i).unwrap().0, entry.is_definition, "?!?!?!" /* should be line*/);
+                }
+        }
+
+        i += 1;
+            c += 1;
+}
+}
 }
 
 pub fn ttags_find(is_definition: bool, pattern: &str) {

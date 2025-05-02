@@ -8,7 +8,7 @@ clap = { version = "4.5.15", features = ["derive"] }
 globwalk = "0.9.1"
 num_cpus = "1.16.0"
 rusqlite = { version = "0.30.0", features = ["bundled"] }
-tree-sitter = "0.22.6"
+#tree-sitter = "0.22.6"
 tree-sitter-tags = "0.22.6"
 # tree-sitter-c = "0.20.2"
 tree-sitter-cpp = "0.22.3"

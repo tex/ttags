@@ -15,7 +15,7 @@ const REF: bool = false;
 #[test]
 fn test_tokenize_cpp() {
     let mut confs : HashMap<String, Rc<TagsConfiguration>> = HashMap::new();
-    let conf = get_tags_configuration(&mut confs, "cpp".to_string());
+    let conf = get_tags_configuration(&mut confs, &"cpp".to_string());
 
     let res = tokenize(
         std::path::Path::new(
