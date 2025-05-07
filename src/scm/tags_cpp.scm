@@ -236,3 +236,6 @@
 (new_expression
   type: (type_identifier) @name) @reference.r28
 
+(preproc_ifdef
+  name: (identifier) @name) @reference.r29
+
