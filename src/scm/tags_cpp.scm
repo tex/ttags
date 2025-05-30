@@ -7,17 +7,23 @@
 
 (declaration
   type: (union_specifier
-          name: (type_identifier) @name)) @definition.d2
+          name: (type_identifier) @name)) @definition.declaration.union_specifier
 
 (function_declarator
-  declarator: (identifier) @name) @definition.d3
+  declarator: (field_identifier) @name) @definition.function_declarator.field_identifier
 
-(function_declarator
-  declarator: (field_identifier) @name) @definition.d4
-
-(function_declarator
-  declarator: (qualified_identifier
-                name: (identifier) @name)) @definition.d5
+(function_declarator [
+  declarator: (identifier) @name
+  declarator: (qualified_identifier [
+                (identifier) @name
+                (qualified_identifier (identifier) @name)
+                (qualified_identifier (qualified_identifier (identifier) @name))
+                (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name)))
+                (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name))))
+                (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name)))))
+                (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name))))))
+         ]) @doc
+]) @definition.function_declarator.identifier
 
 (type_definition 
   declarator: (type_identifier) @name) @definition.d6
@@ -93,14 +99,21 @@
 
 ;; References
 
-(qualified_identifier
-  name: (type_identifier) @name) @reference.r1
+;;(qualified_identifier
+;;  name: (type_identifier) @name) @reference.r1
 
-;;(call_expression
-;;  function: (qualified_identifier) @name) @reference.call
-
-(call_expression
-  function: (identifier) @name) @reference.r2
+(call_expression [
+  function: (identifier) @name
+  function: (qualified_identifier [
+                (identifier) @name
+                (qualified_identifier (identifier) @name)
+                (qualified_identifier (qualified_identifier (identifier) @name))
+                (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name)))
+                (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name))))
+                (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name)))))
+                (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name))))))
+            ]) @doc
+  ]) @reference.call_expression
 
 ;; xyz(TEST)
 (call_expression
@@ -168,11 +181,18 @@
     (argument_list
       (qualified_identifier) @name))) @reference.r14
 
-(field_declaration
-  type: (type_identifier) @name) @reference.r15
-
-(field_declaration
-  type: (qualified_identifier) @name) @reference.r16
+(field_declaration [
+  [(identifier) (type_identifier)] @name
+  (qualified_identifier [
+        [(identifier) (type_identifier)] @name
+        (qualified_identifier [(identifier) (type_identifier)] @name)
+        (qualified_identifier (qualified_identifier [(identifier) (type_identifier)] @name))
+        (qualified_identifier (qualified_identifier (qualified_identifier [(identifier) (type_identifier)] @name)))
+        (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier [(identifier) (type_identifier)] @name))))
+        (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier [(identifier) (type_identifier)] @name)))))
+        (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier [(identifier) (type_identifier)] @name))))))
+  ]) @doc
+]) @reference.r16a
 
 (base_class_clause
   (qualified_identifier) @name) @reference.r17
@@ -197,6 +217,59 @@
   (field_expression
     field: (field_identifier) @name)) @reference.r22
 
+(assignment_expression [
+  right: (identifier) @name
+  right: (qualified_identifier [
+           (identifier) @name
+           (qualified_identifier (identifier) @name)
+           (qualified_identifier (qualified_identifier (identifier) @name))
+           (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name)))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name))))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name)))))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name))))))
+           ]) @doc
+]) @reference.assignment_expression.right.identifier
+
+(assignment_expression [
+  right: (identifier) @name
+  right: (qualified_identifier [
+           (namespace_identifier) @name
+           (qualified_identifier (namespace_identifier) @name)
+           (qualified_identifier (qualified_identifier (namespace_identifier) @name))
+           (qualified_identifier (qualified_identifier (qualified_identifier (namespace_identifier) @name)))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (namespace_identifier) @name))))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (namespace_identifier) @name)))))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (namespace_identifier) @name))))))
+         ]) @doc
+]) @reference.assignment_expression.right.namespace_identifier
+
+(assignment_expression [
+  left: (identifier) @name
+  left: (qualified_identifier [
+           (identifier) @name
+           (qualified_identifier (identifier) @name)
+           (qualified_identifier (qualified_identifier (identifier) @name))
+           (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name)))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name))))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name)))))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name))))))
+           ]) @doc
+]) @reference.assignment_expression.left.identifier
+
+(assignment_expression [
+  left: (identifier) @name
+  left: (qualified_identifier [
+           (namespace_identifier) @name
+           (qualified_identifier (namespace_identifier) @name)
+           (qualified_identifier (qualified_identifier (namespace_identifier) @name))
+           (qualified_identifier (qualified_identifier (qualified_identifier (namespace_identifier) @name)))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (namespace_identifier) @name))))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (namespace_identifier) @name)))))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (namespace_identifier) @name))))))
+         ]) @doc
+]) @reference.assignment_expression.left.namespace_identifier
+
+;; this catches the identifier
 (case_statement [
   value: (identifier) @name
   value: (qualified_identifier [
@@ -210,6 +283,7 @@
            ]) @doc
 ]) @reference.case_statement.identifier
 
+;; this catches every namespace in the qualified identifier
 (case_statement [
   value: (identifier) @name
   value: (qualified_identifier [
@@ -220,7 +294,7 @@
            (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (namespace_identifier) @name))))
            (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (namespace_identifier) @name)))))
            (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (namespace_identifier) @name))))))
-           ]) @doc
+         ]) @doc
 ]) @reference.case_statement.namespace_identifier
 
 
@@ -238,4 +312,8 @@
 
 (preproc_ifdef
   name: (identifier) @name) @reference.r29
+
+(function_definition
+  (function_declarator
+    declarator: (identifier) @name)) @reference.function_definition_function_declarator
 
