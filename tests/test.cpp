@@ -12,6 +12,7 @@ class Class_1
 Class_1::Work()
 {
   int local_1 = 0;
+  extern int extern_1;
   while (m_Variable_1) {
     m_Struct_1.Test();
   }
@@ -21,6 +22,10 @@ Class_1::Work()
 }
 
 char GLOBAL_ARRAY[] = "Hello";
+extern char GLOBAL_ARRAY_EXT[];
+
+const uint8_t TEST::MY_CONSTANT = 20;
+extern uint8_t OTHER_EXTERN;
 
 void Something() {
   MakeUse(&GLOBAL_ARRAY);

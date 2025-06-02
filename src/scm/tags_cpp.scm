@@ -1,3 +1,5 @@
+;; Definitions
+
 ;; This is from tree-sitter-cpp/queries/tags.scm
 
 (struct_specifier
@@ -38,8 +40,6 @@
 
 ;; ---
 
-;; Definitions
-
 ;; typedef void (*SomeHandsomeFnc)(const char* file, int32_t line, intptr_t arg1, intptr_t arg2);
 (type_definition
   (function_declarator
@@ -67,35 +67,80 @@
 ;;      declarator: (identifier) @name))) @definition.identifier
 ;;
 
-;; Constants... oh, no way to know if it is local or global...
-;; probably better to have it than not have it.
+;; To exclude local variables declarations the `((translation_unit...` is used.
+;; This does match only global declarations.
 
 ;; const uint8_t MY_CONSTANT = 20;
-(declaration
-  (init_declarator
-      declarator: (identifier) @name)) @definition.d14
-(declaration
-  (init_declarator
-      (qualified_identifier
-        name: (identifier) @name))) @definition.d15
+((translation_unit
+   (declaration
+    (init_declarator [
+      declarator: (identifier) @name
+      declarator: (qualified_identifier [
+                    (identifier) @name
+                    (qualified_identifier (identifier) @name)
+                    (qualified_identifier (qualified_identifier (identifier) @name))
+                    (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name)))
+                    (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name))))
+                    (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name)))))
+                    (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name))))))
+                ]) @doc
+            ])) @definition.d15))
 
 ;; const char MY_ARRAY[] = "Hello";
+((translation_unit
 (declaration
   (init_declarator
-    (array_declarator
-      declarator: (identifier) @name))) @definition.d16
+    (array_declarator [
+      declarator: (identifier) @name
+      declarator: (qualified_identifier [
+                    (identifier) @name
+                    (qualified_identifier (identifier) @name)
+                    (qualified_identifier (qualified_identifier (identifier) @name))
+                    (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name)))
+                    (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name))))
+                    (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name)))))
+                    (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name))))))
+                ]) @doc
+            ]))) @definition.d16))
+
 ;; extern uint16_t Test
+
+;; to match storage class specifier (like "extern") do either
+;;    (storage_class_specifier)
+;; or
+;;    (storage_class_specifier) @doc
+;;    (#match? @doc "extern")
+;; unfortunately cannot use custom capture like @_storage
+;; therefore @doc is needed as workaround
+
 (declaration
-  declarator: (identifier) @name) @definition.d17
-;; extern SomeClass Test
+  (storage_class_specifier) [
+    declarator: (identifier) @name
+      declarator: (qualified_identifier [
+                    (identifier) @name
+                    (qualified_identifier (identifier) @name)
+                    (qualified_identifier (qualified_identifier (identifier) @name))
+                    (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name)))
+                    (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name))))
+                    (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name)))))
+                    (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name))))))
+                ]) @doc
+      ]) @definition.extern_declaration
+
 (declaration
-    (qualified_identifier
-      name: (identifier) @name)) @definition.d18
-;; extern SomeClass Test[Z]
-(declaration
-  (array_declarator
-    (qualified_identifier
-      name: (identifier) @name))) @definition.d19
+  (storage_class_specifier)
+  (array_declarator[
+    declarator: (identifier) @name
+      declarator: (qualified_identifier [
+                    (identifier) @name
+                    (qualified_identifier (identifier) @name)
+                    (qualified_identifier (qualified_identifier (identifier) @name))
+                    (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name)))
+                    (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name))))
+                    (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name)))))
+                    (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name))))))
+                ]) @doc
+      ])) @definition.extern_array_declaration
 
 ;; References
 
