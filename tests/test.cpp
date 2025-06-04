@@ -5,7 +5,15 @@ class Class_1
     Setup() { m_Variable_1 = 10; };
     Work();
   private:
+    int &m_rVariable_1;
+    int *m_pVariable_1;
     int m_Variable_1;
+    int m_aVariable_1[10];
+    int *&m_rpVariable1;
+    int *m_paVariable_1[10];
+    int m_raVariable_1[10];
+    int *&m_rpaVariable_1[10];
+    int &*m_rpaVariable_2[10];
     MyStruct m_Struct_1;
 };
 
@@ -54,6 +62,12 @@ void Something() {
     case MyClass::CONST:
       break;
   }
+    auto a = new Something(YU::MAX_NUM, localVar, g_Global_1);
+    return &CallPlatformCalculate<uint16_t, ::Crc::CRC16_CCITT_POLYNOMIAL, ::Crc::SOFTWARE>;
 }
 
+template<>
+uint32_t Deep::Crc::Calculate<uint32_t, Crc::CRC32_POLYNOMIAL, Crc::SOFTWARE>(const void* pData, size_t sizeBytes, uint32_t seed)
+{
+}
 

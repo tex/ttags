@@ -27,6 +27,20 @@
          ]) @doc
 ]) @definition.function_declarator.identifier
 
+(template_declaration
+  (function_definition
+    declarator: (function_declarator
+      declarator: [
+        (template_function (identifier) @name)
+        (qualified_identifier (template_function (identifier) @name))
+        (qualified_identifier (qualified_identifier (template_function (identifier) @name)))
+        (qualified_identifier (qualified_identifier (qualified_identifier (template_function (identifier) @name))))
+        (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (template_function (identifier) @name)))))
+        (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (template_function (identifier) @name))))))
+        (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (template_function (identifier) @name)))))))
+  ]) @doc
+)) @definition.template_function_definition.identifier
+
 (type_definition 
   declarator: (type_identifier) @name) @definition.d6
 
@@ -55,8 +69,33 @@
 ;;(namespace_definition
 ;;  name: (identifier) @name) @definition.namespace
 
+(field_declaration [
+  (field_identifier) @name
+  (array_declarator declarator: (field_identifier) @name)
+  (pointer_declarator declarator: (field_identifier) @name)
+  (pointer_declarator declarator: (array_declarator declarator: (field_identifier) @name))
+  declarator: (field_identifier) @name
+]) @definition.field_declaration
+
 (field_declaration
-  declarator: (field_identifier) @name) @definition.d12
+  declarator: (_ [
+    (field_identifier) @name
+    (array_declarator declarator: (field_identifier) @name)
+    (pointer_declarator declarator: (field_identifier) @name)
+    (pointer_declarator declarator: (array_declarator declarator: (field_identifier) @name))
+    declarator: (field_identifier) @name
+  ]) @definition.field_declaration)
+
+(field_declaration
+  declarator: (_
+    declarator: (_ [
+      (field_identifier) @name
+      (array_declarator declarator: (field_identifier) @name)
+      (pointer_declarator declarator: (field_identifier) @name)
+      (pointer_declarator declarator: (array_declarator declarator: (field_identifier) @name))
+      declarator: (field_identifier) @name
+    ]) @definition.field_declaration))
+
 
 (enumerator
   name: (identifier) @name) @definition.d13
@@ -176,33 +215,52 @@
   (subscript_expression
     (identifier) @name)) @reference.r5
 
+;; &TemplateFunction<10,20>
+(pointer_expression
+    ([
+        (template_function (identifier) @name)
+        (qualified_identifier (template_function (identifier) @name))
+        (qualified_identifier (qualified_identifier (template_function (identifier) @name)))
+        (qualified_identifier (qualified_identifier (qualified_identifier (template_function (identifier) @name))))
+        (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (template_function (identifier) @name)))))
+        (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (template_function (identifier) @name))))))
+        (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (template_function (identifier) @name)))))))
+  ]) @doc) @reference.r55
+
 ;; XXX::Test()
 (call_expression
   (qualified_identifier
     name: (identifier) @name)) @reference.r6
 
-;; XXX::YYY() : ZZZ(BBB:TEST) {}
-;; How to do proper recursion?
-(field_initializer
-  (argument_list
-    (qualified_identifier
-      name: (identifier) @name)) @reference.r7)
-(field_initializer
-  (argument_list
-    (qualified_identifier
-      (qualified_identifier
-        name: (identifier) @name))) @reference.r8)
+;; it would be nice to do post-processing and remove any @reference.argument_list.* (local variable used) which has no @definition.*
+(argument_list [
+  (identifier) @name
+  (qualified_identifier [
+           (identifier) @name
+           (qualified_identifier (identifier) @name)
+           (qualified_identifier (qualified_identifier (identifier) @name))
+           (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name)))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name))))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name)))))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name))))))
+           ]) @doc
+]) @reference.argument_list.identifier
 
-;; How to do proper recursion?
-(field_initializer
-  (argument_list
-    (qualified_identifier
-      scope: (namespace_identifier) @name)) @reference.r9)
-(field_initializer
-  (argument_list
-    (qualified_identifier
-      (qualified_identifier
-        scope: (namespace_identifier) @name))) @reference.r10)
+;; this catches every namespace in the qualified identifier
+(argument_list [
+  (identifier) @name
+  (qualified_identifier [
+           (namespace_identifier) @name
+           (qualified_identifier (namespace_identifier) @name)
+           (qualified_identifier (qualified_identifier (namespace_identifier) @name))
+           (qualified_identifier (qualified_identifier (qualified_identifier (namespace_identifier) @name)))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (namespace_identifier) @name))))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (namespace_identifier) @name)))))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (namespace_identifier) @name))))))
+         ]) @doc
+]) @reference.argument_list.namespace_identifier
+
+
 
 ;; m_Struct_1.XXX();
 ;;(call_expression
@@ -221,10 +279,10 @@
 (declaration
   type: (qualified_identifier) @name) @reference.r13
 
-(declaration
-  (init_declarator
-    (argument_list
-      (qualified_identifier) @name))) @reference.r14
+;; (declaration
+;;   (init_declarator
+;;     (argument_list
+;;       (qualified_identifier) @name))) @reference.r14
 
 (field_declaration [
   [(identifier) (type_identifier)] @name
