@@ -1,9 +1,16 @@
+namespace A {
+namespace B {
+static const uint32_t VER_NAM = 2;
+}
+}
+
 class Class_1
 {
   public:
     Class_1() : m_Variable_1(0), m_Struct_1() { };
     Setup() { m_Variable_1 = 10; };
     Work();
+    static const uint32_t VAR = 3u;
   private:
     int &m_rVariable_1;
     int *m_pVariable_1;

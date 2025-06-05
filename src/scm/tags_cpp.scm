@@ -181,6 +181,22 @@
                 ]) @doc
       ])) @definition.extern_array_declaration
 
+(declaration
+  (storage_class_specifier)
+  (init_declarator[
+    declarator: (identifier) @name
+      declarator: (qualified_identifier [
+                    (identifier) @name
+                    (qualified_identifier (identifier) @name)
+                    (qualified_identifier (qualified_identifier (identifier) @name))
+                    (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name)))
+                    (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name))))
+                    (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name)))))
+                    (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name))))))
+                ]) @doc
+      ])) @definition.extern_init_declaration
+
+
 ;; References
 
 ;;(qualified_identifier
