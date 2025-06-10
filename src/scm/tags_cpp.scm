@@ -417,10 +417,58 @@
 ]) @reference.case_statement.namespace_identifier
 
 
-(binary_expression
-  left: (identifier) @name) @reference.r25
-(binary_expression
-  right: (identifier) @name) @reference.r26
+(binary_expression [
+  left: (identifier) @name
+  left: (qualified_identifier [
+           (identifier) @name
+           (qualified_identifier (identifier) @name)
+           (qualified_identifier (qualified_identifier (identifier) @name))
+           (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name)))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name))))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name)))))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name))))))
+           ]) @doc
+]) @reference.binary_expression.left.identifier
+
+(binary_expression [
+  left: (identifier) @name
+  left: (qualified_identifier [
+           (namespace_identifier) @name
+           (qualified_identifier (namespace_identifier) @name)
+           (qualified_identifier (qualified_identifier (namespace_identifier) @name))
+           (qualified_identifier (qualified_identifier (qualified_identifier (namespace_identifier) @name)))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (namespace_identifier) @name))))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (namespace_identifier) @name)))))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (namespace_identifier) @name))))))
+         ]) @doc
+])  @reference.binary_expression.left.namespace_identifier
+
+(binary_expression [
+  right: (identifier) @name
+  right: (qualified_identifier [
+           (identifier) @name
+           (qualified_identifier (identifier) @name)
+           (qualified_identifier (qualified_identifier (identifier) @name))
+           (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name)))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name))))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name)))))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (identifier) @name))))))
+           ]) @doc
+]) @reference.binary_expression.right.identifier
+
+(binary_expression [
+  right: (identifier) @name
+  right: (qualified_identifier [
+           (namespace_identifier) @name
+           (qualified_identifier (namespace_identifier) @name)
+           (qualified_identifier (qualified_identifier (namespace_identifier) @name))
+           (qualified_identifier (qualified_identifier (qualified_identifier (namespace_identifier) @name)))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (namespace_identifier) @name))))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (namespace_identifier) @name)))))
+           (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (qualified_identifier (namespace_identifier) @name))))))
+         ]) @doc
+])  @reference.binary_expression.right.namespace_identifier
+
 
 ;; XYZ_TYPE FunctionName(something) { ... }
 (function_definition

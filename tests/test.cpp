@@ -76,5 +76,6 @@ void Something() {
 template<>
 uint32_t Deep::Crc::Calculate<uint32_t, Crc::CRC32_POLYNOMIAL, Crc::SOFTWARE>(const void* pData, size_t sizeBytes, uint32_t seed)
 {
+    q = T::A::E::SOME;
 }
 
