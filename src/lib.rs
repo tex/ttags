@@ -14,6 +14,7 @@ use std::fs::File;
 use itertools::Itertools;
 use regex::Regex;
 use std::fs::OpenOptions;
+use std::io::BufRead;
 
 static GLOBAL_FILES_TOTAL_COUNT: AtomicUsize = AtomicUsize::new(0);
 static GLOBAL_FILES_PROCESSED_COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -24,21 +25,21 @@ const PATTERNS: [&str; 10] = [ "*.rs", "*.cpp", "*.hpp", "*.ipp", "*.cc", "*.hh"
 fn new_tags_configuration(ext : &String) -> Option<tree_sitter_tags::TagsConfiguration> {
     match ext.as_str() {
         "text/x-rs" => Some(tree_sitter_tags::TagsConfiguration::new(
-            tree_sitter_rust::language(),
+            tree_sitter_rust::LANGUAGE.into(),
             &fs::read_to_string(format!("{}/src/scm/tags_rust.scm", env!("CARGO_MANIFEST_DIR")))
                 .expect("Can't read tags_rust.scm"),
             "").expect("Failed to create tags configuration")),
         "text/plain"|"text/x-c"|"text/x-c++" => Some(tree_sitter_tags::TagsConfiguration::new(
-            tree_sitter_cpp::language(),
+            tree_sitter_cpp::LANGUAGE.into(),
             &fs::read_to_string(format!("{}/src/scm/tags_cpp.scm", env!("CARGO_MANIFEST_DIR")))
                 .expect("Can't read tags_cpp.scm"),
             "").expect("Failed to create tags configuration")),
         "text/x-js" => Some(tree_sitter_tags::TagsConfiguration::new(
-            tree_sitter_javascript::language(),
+            tree_sitter_javascript::LANGUAGE.into(),
             tree_sitter_javascript::TAGS_QUERY,
             tree_sitter_javascript::LOCALS_QUERY).expect("Failed to create tags configuration")),
         "text/x-python" => Some(tree_sitter_tags::TagsConfiguration::new(
-            tree_sitter_python::language(),
+            tree_sitter_python::LANGUAGE.into(),
             tree_sitter_python::TAGS_QUERY,
             "").expect("Failed to create tags configuration")),
         _ => None,
@@ -110,11 +111,38 @@ impl TagData {
     }
 }
 
-fn tokenize(file: &String, file_index: usize, conf: &tree_sitter_tags::TagsConfiguration, tag_data: &Mutex<TagData>) {
-    // Read source code to tokenize
-    let code = std::fs::read(file)
-        .map_err(|err| println!("Failed to read file ({}), error ({})", file, err))
+fn read_regex_patterns(filename: &str) -> Vec<(Regex, String)> {
+    let lines = std::fs::read(filename)
+        .map_err(|err| println!("Failed to read file ({}), error ({})", filename, err))
         .unwrap_or_default();
+
+    let mut regexes = Vec::new();
+
+    for line in lines.lines() {
+        let line = line.expect("Failed");
+        let parts: Vec<&str> = line.split('|').map(|s| s.trim()).collect();
+        if parts.len() == 2 {
+            let re = Regex::new(&parts[0].to_string()).unwrap();
+            regexes.push((re, parts[1].to_string()));
+        }
+    }
+    regexes
+}
+
+fn apply_regex_replacements(regexes: &Vec<(Regex, String)>, text: &str) -> String {
+    let mut result = text.to_string();
+    for (re, replacement) in regexes {
+        result = re.replace_all(&result, replacement.as_str()).to_string();
+    }
+    result
+}
+
+fn tokenize(file: &String, file_index: usize, conf: &tree_sitter_tags::TagsConfiguration, tag_data: &Mutex<TagData>, regexes: &Vec<(Regex, String)>) {
+    // Read source code to tokenize
+    let code = apply_regex_replacements(regexes,
+        &String::from_utf8_lossy(&std::fs::read(file)
+        .map_err(|err| println!("Failed to read file ({}), error ({})", file, err))
+        .unwrap_or_default())).into_bytes();
 
     // Create TreeSitter context and generate tags from the source code
     let mut context = tree_sitter_tags::TagsContext::new();
@@ -125,8 +153,9 @@ fn tokenize(file: &String, file_index: usize, conf: &tree_sitter_tags::TagsConfi
     for tag in tags {
         let tag: tree_sitter_tags::Tag = tag.unwrap();
 
+        let is_definition_to_string = |i:bool| -> &str { if i { "definition" } else { "reference" } };
         let name = std::str::from_utf8(&code[tag.name_range.clone()]).unwrap_or("").to_string();
-        println!("file: {:?}, docs: {:?}, span: {:?}, type: {:?}, name: {:?}", file, tag.docs, tag.span, &conf.syntax_type_name(tag.syntax_type_id), name);
+        println!("file: {:?}, docs: {:?}, span: {:?}, type: {}.{}, name: {:?}", file, tag.docs, tag.span, is_definition_to_string(tag.is_definition), &conf.syntax_type_name(tag.syntax_type_id), name);
 
         tag_data.entry.push(
             TagEntry {
@@ -159,12 +188,14 @@ fn tokenize_thread(rx_dir_entry: crossbeam_channel::Receiver<(String, usize)>, t
     ].try_into().expect("Failed to load magic database");
     let cookie = cookie.load(&databases).expect("Failed to load magic database");
 
+    let regexes = read_regex_patterns("ttags.regex");
+
     for (file, file_index) in rx_dir_entry.iter() {
         let ext = cookie.file(&file).expect("Error");
         let conf = get_tags_configuration(&mut confs, &ext);
         match conf {
             Some(conf) => {
-                tokenize(&file, file_index, &conf, &tag_data);
+                tokenize(&file, file_index, &conf, &tag_data, &regexes);
                 let _ = GLOBAL_FILES_PROCESSED_COUNT.fetch_add(1, Ordering::Relaxed);
                 if GLOBAL_FILES_PROCESSED_COUNT.load(Ordering::Relaxed) % 100 == 0 {
                     print!("PROCESSED {:?} + IGNORED {:?} / TOTAL {:?}\r",

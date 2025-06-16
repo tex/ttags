@@ -1,14 +1,17 @@
+#ifdef QQ
+
 namespace A {
 namespace B {
 static const uint32_t VER_NAM = 2;
+const uint32_t VER_PAM = 1;
 }
 }
 
-class Class_1
+class RA_ALIGN(Class_1
 {
   public:
     Class_1() : m_Variable_1(0), m_Struct_1() { };
-    Setup() { m_Variable_1 = 10; };
+    INLINE Setup() { m_Variable_1 = 10; };
     Work();
     static const uint32_t VAR = 3u;
   private:
@@ -22,6 +25,10 @@ class Class_1
     int *&m_rpaVariable_1[10];
     int &*m_rpaVariable_2[10];
     MyStruct m_Struct_1;
+});
+
+COMP_PACKED(struct) MyStruct {
+int m_A;
 };
 
 Class_1::Work()
@@ -52,6 +59,9 @@ Test::Test() : TestBase(TestObject::Int::TEST_OBJECT_ID) {}
 void Something() {
   SOMETHING((uint32_t *)&ARRAY[2], Something);
   someAtributes[0].specificItem = someValue;
+    ATPMC_RMW(some) {
+        something();
+    }
 }
 
 EXTERN uint16_t platformID;
@@ -78,4 +88,18 @@ uint32_t Deep::Crc::Calculate<uint32_t, Crc::CRC32_POLYNOMIAL, Crc::SOFTWARE>(co
 {
     q = T::A::E::SOME;
 }
+
+
+#define DBG_PRINT_(SKIP_LOCK, GROUP, FORMAT, ...)                                                       \
+if (DBGPRINT_CONCAT2(DBG_PRINT_ACTIVE_, GROUP) != 0)                                                    \
+{                                                                                                       \
+    static_assert(                                                                                      \
+            DBGPRINT_SUM_SIZEOF(DBGPRINT_MARK_START, ##__VA_ARGS__, DBGPRINT_MARK_END)                  \
+                + DbgPrintInternal::PRINT_NOMEM_BYTES <= DbgBuffer::MAX_ENTRY_SIZE_BYTES,               \
+            "Space required by parameters is too big! Split the debug print or remove parameter(s)");   \
+    SECTION(".debug_print_ra_id." DBGPRINT_QUOTE(DBG_PRINT_ID) DBGPRINT_QUOTE(__COUNTER__))             \
+    static DbgPrintId ALIGN(DBGPRINT_ALIGN) DBGPRINT_CONCAT2(___dbgPrintId_, DBG_PRINT_ID);             \
+    SECTION(".debug_print_ra_metadata." DBGPRINT_QUOTE(DBG_PRINT_ID) DBGPRINT_QUOTE(__COUNTER__))
+
+#endif
 
