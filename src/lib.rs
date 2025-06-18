@@ -139,10 +139,11 @@ fn apply_regex_replacements(regexes: &Vec<(Regex, String)>, text: &str) -> Strin
 
 fn tokenize(file: &String, file_index: usize, conf: &tree_sitter_tags::TagsConfiguration, tag_data: &Mutex<TagData>, regexes: &Vec<(Regex, String)>) {
     // Read source code to tokenize
-    let code = apply_regex_replacements(regexes,
-        &String::from_utf8_lossy(&std::fs::read(file)
+    let lines = std::fs::read(file)
         .map_err(|err| println!("Failed to read file ({}), error ({})", file, err))
-        .unwrap_or_default())).into_bytes();
+        .unwrap_or_default();
+
+    let code = apply_regex_replacements(regexes, &String::from_utf8_lossy(&lines)).into_bytes();
 
     // Create TreeSitter context and generate tags from the source code
     let mut context = tree_sitter_tags::TagsContext::new();
@@ -406,11 +407,19 @@ let name_entry_index = name.get(i).unwrap().1;
     // Deserialize the bytes into the struct
     let entry: TagEntry = bincode::deserialize(&buffer).unwrap();
 
+    let get_context = |path, line| -> String {
+            let file = File::open(path).expect("File not found!");
+            let reader = io::BufReader::new(file);
+            if let Some(Ok(line)) = reader.lines().nth(line-1) {
+                line.trim_start().to_owned()
+            } else { String::from("") }
+        };
+
 
             if entry.is_definition == is_definition {
                 let file: &TagFile = &file[entry.file_index];
                 println!("{}:{}:{}",
-                    file.path, entry.row, pattern /* should be line*/);
+                    file.path, entry.row, get_context(&file.path, entry.row));
             }
         }
 
