@@ -89,6 +89,12 @@ uint32_t Deep::Crc::Calculate<uint32_t, Crc::CRC32_POLYNOMIAL, Crc::SOFTWARE>(co
     q = T::A::E::SOME;
 }
 
+template<class T>
+T Calculate2<uint32_t, Crc::CRC32_POLYNOMIAL, Crc::SOFTWARE>(const void* pData, size_t sizeBytes, uint32_t seed)
+{
+    q = T::A::E::SOME;
+}
+
 
 #define DBG_PRINT_(SKIP_LOCK, GROUP, FORMAT, ...)                                                       \
 if (DBGPRINT_CONCAT2(DBG_PRINT_ACTIVE_, GROUP) != 0)                                                    \
